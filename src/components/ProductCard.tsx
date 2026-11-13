@@ -7,7 +7,7 @@ interface ProductCardProps {
   isWishlisted: boolean;
   onToggleWishlist: (product: Product) => void;
   onQuickView: (product: Product) => void;
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: Product, selectedSize?: string) => void;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -20,10 +20,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
+  const [activeVariantIdx, setActiveVariantIdx] = useState(0);
+
+  const variants = product.colorVariants && product.colorVariants.length > 0 ? product.colorVariants : [];
+  const activeVariant = variants[activeVariantIdx] || variants[0];
+  const displayImage = activeVariant?.image || product.images[0] || '';
+  const hasMultipleColors = variants.length > 1;
 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onAddToCart(product);
+    const defaultSize = product.availableSizes?.[0] || 'Free Size';
+    const sizeWithColor = hasMultipleColors && activeVariant?.colorName
+      ? `${defaultSize} · ${activeVariant.colorName}`
+      : undefined;
+    onAddToCart(product, sizeWithColor);
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 1800);
   };
@@ -39,6 +49,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         {product.discountPercent > 0 && (
           <div className="absolute top-2 left-2 z-10 px-1.5 py-0.5 bg-[#9F2089] text-white text-[10px] font-bold rounded shadow-2xs">
             {product.discountPercent}% OFF
+          </div>
+        )}
+
+        {/* Color count badge when product has multiple color variants */}
+        {hasMultipleColors && (
+          <div className="absolute bottom-2 left-2 sm:group-hover:opacity-0 transition-opacity z-10 px-1.5 py-0.5 bg-white/95 text-[#222222] border border-[#E8E8E8] text-[9px] font-bold rounded shadow-2xs flex items-center gap-1">
+            <span className="flex -space-x-1">
+              {variants.slice(0, 4).map((v, i) => (
+                <span
+                  key={i}
+                  className="w-2.5 h-2.5 rounded-full border border-white"
+                  style={{ backgroundColor: v.colorHex || '#6B1426' }}
+                />
+              ))}
+            </span>
+            <span>{variants.length} Colors</span>
           </div>
         )}
 
@@ -60,9 +86,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         </button>
 
         {/* Product Image */}
-        {!imageError && product.images[0] ? (
+        {!imageError && displayImage ? (
           <img
-            src={product.images[0]}
+            src={displayImage}
             alt={product.title}
             onLoad={() => setImageLoaded(true)}
             onError={() => setImageError(true)}
@@ -129,6 +155,45 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           >
             {product.title}
           </h3>
+
+          {/* Interactive Color Swatches for Same Product Multi-Color Variants */}
+          {hasMultipleColors && (
+            <div
+              className="flex items-center gap-1.5 mt-1.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {variants.slice(0, 5).map((v, idx) => {
+                const isActive = activeVariantIdx === idx;
+                return (
+                  <button
+                    key={`${v.colorName}-${idx}`}
+                    type="button"
+                    onClick={() => {
+                      setImageError(false);
+                      setActiveVariantIdx(idx);
+                    }}
+                    onMouseEnter={() => {
+                      setImageError(false);
+                      setActiveVariantIdx(idx);
+                    }}
+                    title={v.colorName}
+                    className={`w-4 h-4 rounded-full border transition-transform ${
+                      isActive
+                        ? 'ring-2 ring-[#9F2089] ring-offset-1 border-white scale-110'
+                        : 'border-black/20 hover:scale-105'
+                    }`}
+                    style={{ backgroundColor: v.colorHex || '#6B1426' }}
+                    aria-label={`Color ${v.colorName}`}
+                  />
+                );
+              })}
+              {variants.length > 5 && (
+                <span className="text-[10px] text-[#666666] font-semibold">
+                  +{variants.length - 5}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div>

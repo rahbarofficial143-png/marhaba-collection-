@@ -26,6 +26,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 }) => {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState<string>('Free Size');
+  const [selectedColor, setSelectedColor] = useState<string>('');
   const [pincode, setPincode] = useState('');
   const [pincodeStatus, setPincodeStatus] = useState<'idle' | 'checking' | 'verified' | 'error'>('idle');
   const [copiedCode, setCopiedCode] = useState(false);
@@ -42,6 +43,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         product.availableSizes && product.availableSizes.length > 0
           ? product.availableSizes[0]
           : 'Free Size'
+      );
+      setSelectedColor(
+        product.colorVariants && product.colorVariants.length > 0
+          ? product.colorVariants[0].colorName
+          : product.color || ''
       );
       setActiveTab('details');
       setShowSizeChart(false);
@@ -81,8 +87,21 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     }
   };
 
+  const variants = product.colorVariants && product.colorVariants.length > 0 ? product.colorVariants : [];
+  const hasMultipleColors = variants.length > 1;
+  const effectiveSizeLabel =
+    hasMultipleColors && selectedColor ? `${selectedSize} · ${selectedColor}` : selectedSize;
+
+  const handleSelectColorVariant = (colorName: string, variantImage: string) => {
+    setSelectedColor(colorName);
+    const imgIdx = product.images.findIndex((img) => img === variantImage);
+    if (imgIdx >= 0) {
+      setActiveImageIndex(imgIdx);
+    }
+  };
+
   const handleAddToCart = () => {
-    onAddToCart(product, selectedSize);
+    onAddToCart(product, effectiveSizeLabel);
     setAddedAnimation(true);
     setTimeout(() => setAddedAnimation(false), 2000);
   };
@@ -304,6 +323,47 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </div>
               </div>
 
+              {/* Multi-Color Selector (when product has color variants) */}
+              {variants.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between text-xs font-bold text-[#222222] mb-2">
+                    <span>
+                      Select Color:{' '}
+                      <strong className="text-[#9F2089]">{selectedColor || product.color || 'Default'}</strong>
+                    </span>
+                    {hasMultipleColors && (
+                      <span className="text-[10px] font-semibold text-[#038D63] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                        {variants.length} Colors Available
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {variants.map((v, idx) => {
+                      const isActive = (selectedColor || variants[0].colorName) === v.colorName;
+                      return (
+                        <button
+                          key={`${v.colorName}-${idx}`}
+                          type="button"
+                          onClick={() => handleSelectColorVariant(v.colorName, v.image)}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 text-xs rounded-md border transition-all cursor-pointer ${
+                            isActive
+                              ? 'border-[#9F2089] bg-[#FDE5F4]/60 text-[#9F2089] font-bold ring-1 ring-[#9F2089]'
+                              : 'border-[#CCCCCC] bg-white text-[#222222] hover:border-[#9F2089]'
+                          }`}
+                        >
+                          <span
+                            className="w-4 h-4 rounded-full border border-black/20 shrink-0"
+                            style={{ backgroundColor: v.colorHex || '#6B1426' }}
+                          />
+                          <span>{v.colorName}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Size Selector with Size Chart */}
               <div>
                 <div className="flex items-center justify-between text-xs font-bold text-[#222222] mb-2">
@@ -523,7 +583,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               </button>
 
               <button
-                onClick={() => onBuyNow(product, selectedSize)}
+                onClick={() => onBuyNow(product, effectiveSizeLabel)}
                 className="flex-1 py-3 px-4 bg-[#9F2089] hover:bg-[#80182E] text-white text-xs sm:text-sm font-bold rounded shadow-md active:scale-98 flex items-center justify-center gap-2 transition-all"
               >
                 <span>Buy Now (Instant Checkout)</span>

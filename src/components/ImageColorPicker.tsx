@@ -130,7 +130,7 @@ export const ImageColorPicker: React.FC<ImageColorPickerProps> = ({
       let lastSize = 0;
 
       for (const file of files) {
-        const result = await compressImageFile(file, 850, 850, 0.72);
+        const result = await compressImageFile(file, 700, 700, 0.65, 14);
         compressedList.push(result.dataUrl);
         totalSaved += Math.max(0, result.originalSizeKb - result.sizeKb);
         lastSize = result.sizeKb;
@@ -300,7 +300,7 @@ export const ImageColorPicker: React.FC<ImageColorPickerProps> = ({
             )}
           </div>
           <div className="text-[10px] text-[#666666] max-w-sm">
-            ⚡ <strong>Smart Auto-Compression:</strong> Any high-res photo is automatically compressed to ~25-45 KB to save Supabase free 2GB storage!
+            ⚡ <strong>Ultra-Low KB Compression:</strong> Any photo is automatically compressed to <strong>~6-15 KB</strong> (or paste URL for <strong>~0.08 KB</strong>)!
           </div>
         </div>
 

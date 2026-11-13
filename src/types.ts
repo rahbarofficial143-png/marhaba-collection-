@@ -19,6 +19,12 @@ export interface Category {
   itemCount?: number;
 }
 
+export interface ProductColorVariant {
+  colorName: string;
+  colorHex: string;
+  image: string;
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -32,6 +38,7 @@ export interface Product {
   mTrusted?: boolean;
   color?: string;
   colorHex?: string;
+  colorVariants?: ProductColorVariant[];
   price: number;
   originalPrice: number;
   discountPercent: number;

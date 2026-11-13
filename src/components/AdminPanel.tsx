@@ -5,8 +5,9 @@ import {
   Copy, ExternalLink, ShieldCheck, CheckCircle2, AlertCircle, Zap, Upload, LogOut, User,
   Eye, EyeOff, KeyRound, Link2
 } from 'lucide-react';
-import { Product, Banner, Order, Category, SupabaseConfig } from '../types';
+import { Product, Banner, Order, Category, SupabaseConfig, ProductColorVariant } from '../types';
 import { ImageColorPicker } from './ImageColorPicker';
+import { encodeMultiColorSingleLink, getSupabaseEncodedPayloadKb } from '../lib/multiColorCodec';
 import { 
   SUPABASE_SQL_SCHEMA, 
   getSupabaseConfig, 
@@ -129,6 +130,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     supplierName: 'Marhaba Master Loom Collective',
     color: 'Royal Burgundy',
     colorHex: '#6B1426',
+    colorVariants: [] as ProductColorVariant[],
     price: 1299,
     originalPrice: 2999,
     discountPercent: 57,
@@ -145,6 +147,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     isBridal: false,
     mTrusted: true
   });
+  const [variantCompressingIdx, setVariantCompressingIdx] = useState<number | null>(null);
 
   // Category Add/Edit Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -225,6 +228,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleOpenEditProduct = (p: Product) => {
     setEditingProduct(p);
     setPendingImageUrl('');
+    const extraVariants =
+      p.colorVariants && p.colorVariants.length > 1
+        ? p.colorVariants.slice(1).map((v) => ({ ...v }))
+        : [];
+    const extraUrls = new Set(extraVariants.map((v) => v.image));
+    const primaryImages =
+      p.images.length > 0
+        ? p.images.filter((img, idx) => idx === 0 || !extraUrls.has(img))
+        : [];
+
     setProductForm({
       title: p.title,
       category: p.category,
@@ -232,12 +245,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       artisanCluster: p.artisanCluster,
       provenanceTag: p.provenanceTag,
       supplierName: p.supplierName || 'Marhaba Certified Supplier',
-      color: p.color || 'Royal Burgundy',
-      colorHex: p.colorHex || '#6B1426',
+      color: p.colorVariants?.[0]?.colorName || p.color || 'Royal Burgundy',
+      colorHex: p.colorVariants?.[0]?.colorHex || p.colorHex || '#6B1426',
+      colorVariants: extraVariants,
       price: p.price,
       originalPrice: p.originalPrice,
       discountPercent: p.discountPercent,
-      images: p.images.length > 0 ? p.images : [],
+      images: primaryImages,
       fabric: p.fabric,
       weaveType: p.weaveType,
       blousePiece: p.blousePiece,
@@ -265,6 +279,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       supplierName: 'Marhaba Direct Loom Collective',
       color: 'Royal Burgundy',
       colorHex: '#6B1426',
+      colorVariants: [],
       price: 1299,
       originalPrice: 2999,
       discountPercent: 57,
@@ -284,6 +299,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setIsProductModalOpen(true);
   };
 
+  const handleAddColorVariantRow = (colorName = 'White', colorHex = '#FFFFFF') => {
+    setProductForm((prev) => ({
+      ...prev,
+      colorVariants: [...prev.colorVariants, { colorName, colorHex, image: '' }]
+    }));
+  };
+
+  const handleUpdateColorVariantRow = (idx: number, patch: Partial<ProductColorVariant>) => {
+    setProductForm((prev) => ({
+      ...prev,
+      colorVariants: prev.colorVariants.map((v, i) => (i === idx ? { ...v, ...patch } : v))
+    }));
+  };
+
+  const handleRemoveColorVariantRow = (idx: number) => {
+    setProductForm((prev) => ({
+      ...prev,
+      colorVariants: prev.colorVariants.filter((_, i) => i !== idx)
+    }));
+  };
+
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
     const calculatedDiscount = Math.round(
@@ -294,9 +330,53 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const categoryLabel = targetCategory ? targetCategory.label : productForm.categoryLabel;
 
     const trimmedPending = pendingImageUrl.trim();
-    const finalImages = trimmedPending && !productForm.images.includes(trimmedPending)
-      ? [...productForm.images, trimmedPending]
-      : productForm.images;
+    const basePrimaryImages =
+      trimmedPending && !productForm.images.includes(trimmedPending)
+        ? [...productForm.images, trimmedPending]
+        : productForm.images;
+
+    const cleanExtraVariants: ProductColorVariant[] = productForm.colorVariants
+      .map((v) => ({
+        colorName: (v.colorName || 'Color').trim(),
+        colorHex: v.colorHex || '#6B1426',
+        image: (v.image || '').trim()
+      }))
+      .filter((v) => v.image.length > 0);
+
+    const primaryImage = basePrimaryImages[0] || cleanExtraVariants[0]?.image || '';
+    const allColorVariants: ProductColorVariant[] = [];
+    if (cleanExtraVariants.length > 0) {
+      if (basePrimaryImages[0]) {
+        allColorVariants.push({
+          colorName: productForm.color || 'Default',
+          colorHex: productForm.colorHex || '#6B1426',
+          image: basePrimaryImages[0]
+        });
+      }
+      allColorVariants.push(...cleanExtraVariants);
+    } else if (primaryImage) {
+      allColorVariants.push({
+        colorName: productForm.color || 'Default',
+        colorHex: productForm.colorHex || '#6B1426',
+        image: primaryImage
+      });
+    }
+
+    const finalImages = Array.from(
+      new Set([...basePrimaryImages, ...cleanExtraVariants.map((v) => v.image)].filter(Boolean))
+    );
+
+    const singleEncodedPreview = encodeMultiColorSingleLink(
+      allColorVariants,
+      finalImages,
+      productForm.color,
+      productForm.colorHex
+    );
+    const savedKb = getSupabaseEncodedPayloadKb(singleEncodedPreview);
+    const colorCountLabel =
+      allColorVariants.length > 1
+        ? `${allColorVariants.length} Colors in 1 Link · ${savedKb} KB`
+        : `1 Link · ${savedKb} KB`;
 
     if (editingProduct) {
       const updated: Product = {
@@ -309,6 +389,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         supplierName: productForm.supplierName,
         color: productForm.color,
         colorHex: productForm.colorHex,
+        colorVariants: allColorVariants.length > 0 ? allColorVariants : undefined,
         price: Number(productForm.price),
         originalPrice: Number(productForm.originalPrice),
         discountPercent: calculatedDiscount > 0 ? calculatedDiscount : productForm.discountPercent,
@@ -331,12 +412,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         saveProductToSupabase(updated, cfg).then((ok) => {
           const errDetail = getLastSupabaseError();
           showToast(
-            ok ? 'Product updated in Supabase!' : `Updated locally, Supabase error: ${errDetail || 'Sync failed'}`,
+            ok
+              ? `Product updated in Supabase (${colorCountLabel})!`
+              : `Updated locally, Supabase error: ${errDetail || 'Sync failed'}`,
             ok ? 'success' : 'error'
           );
         });
       } else {
-        showToast('Product updated locally! Connect Supabase tab for cloud save.', 'info');
+        showToast(`Product updated locally (${colorCountLabel})!`, 'info');
       }
     } else {
       const newProd: Product = {
@@ -350,6 +433,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         supplierName: productForm.supplierName,
         color: productForm.color,
         colorHex: productForm.colorHex,
+        colorVariants: allColorVariants.length > 0 ? allColorVariants : undefined,
         price: Number(productForm.price),
         originalPrice: Number(productForm.originalPrice),
         discountPercent: calculatedDiscount > 0 ? calculatedDiscount : 50,
@@ -378,12 +462,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         saveProductToSupabase(newProd, cfg).then((ok) => {
           const errDetail = getLastSupabaseError();
           showToast(
-            ok ? 'New product saved to Supabase!' : `Added locally, Supabase error: ${errDetail || 'Save failed'}`,
+            ok
+              ? `New product saved to Supabase (${colorCountLabel})!`
+              : `Added locally, Supabase error: ${errDetail || 'Save failed'}`,
             ok ? 'success' : 'error'
           );
         });
       } else {
-        showToast('Product added locally! Connect Supabase tab for cloud save.', 'info');
+        showToast(`Product added locally (${colorCountLabel})!`, 'info');
       }
     }
     setPendingImageUrl('');
@@ -1081,7 +1167,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="min-w-0 max-w-xs">
                               <div className="font-bold text-[#222222] truncate">{p.title}</div>
                               <div className="text-[11px] text-[#666666] truncate mt-0.5">
-                                {p.fabric} · {p.images.length} images
+                                {p.fabric} · {p.colorVariants && p.colorVariants.length > 1 ? `${p.colorVariants.length} Colors (1 Link)` : `${p.images.length} Image`} ·{' '}
+                                <span className="font-mono text-[#038D63] font-semibold">
+                                  {getSupabaseEncodedPayloadKb(
+                                    encodeMultiColorSingleLink(p.colorVariants, p.images, p.color, p.colorHex)
+                                  )} KB
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -1094,13 +1185,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </td>
 
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className="w-3.5 h-3.5 rounded-full border border-black/20 shrink-0"
-                              style={{ backgroundColor: p.colorHex || '#6B1426' }}
-                            />
-                            <span className="text-xs font-medium text-[#333333]">{p.color || 'Multi'}</span>
-                          </div>
+                          {p.colorVariants && p.colorVariants.length > 1 ? (
+                            <div className="space-y-1">
+                              <div className="flex items-center -space-x-1">
+                                {p.colorVariants.slice(0, 5).map((v, i) => (
+                                  <span
+                                    key={i}
+                                    title={v.colorName}
+                                    className="w-4 h-4 rounded-full border-2 border-white shadow-2xs"
+                                    style={{ backgroundColor: v.colorHex || '#6B1426' }}
+                                  />
+                                ))}
+                              </div>
+                              <div className="text-[10px] font-bold text-[#9F2089]">
+                                {p.colorVariants.length} Colors · 1 Link
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="w-3.5 h-3.5 rounded-full border border-black/20 shrink-0"
+                                style={{ backgroundColor: p.colorHex || '#6B1426' }}
+                              />
+                              <span className="text-xs font-medium text-[#333333]">{p.color || 'Multi'}</span>
+                            </div>
+                          )}
                         </td>
 
                         <td className="py-3 px-4">
@@ -1891,7 +2000,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               {/* 1. Drag & Drop Images & Photoshop Eyedropper Tool */}
-              <div className="border border-[#E8E8E8] rounded-lg p-3.5 bg-white">
+              <div className="border border-[#E8E8E8] rounded-lg p-3.5 bg-white space-y-4">
                 <ImageColorPicker
                   images={productForm.images}
                   onChangeImages={(newImages) => setProductForm({ ...productForm, images: newImages })}
@@ -1903,6 +2012,206 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   allowMultiple={true}
                   onPendingUrlChange={setPendingImageUrl}
                 />
+
+                {/* 2. SAME PRODUCT MULTI-COLOR VARIANTS (ALL COLORS SAVED AS 1 SINGLE LINK IN SUPABASE) */}
+                <div className="border-t border-[#EFEAE2] pt-3.5 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-xs text-[#222222] flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-[#9F2089]" />
+                        <span>Add More Colors of Same Product (e.g. Jubba: White, Red, Blue, Black)</span>
+                      </div>
+                      <p className="text-[10px] text-[#666666] mt-0.5">
+                        Ek hi kapde ke sabhi color variants <strong>1 hi product</strong> aur Supabase mein{' '}
+                        <strong className="text-[#038D63]">1 single link</strong> me save honge!
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleAddColorVariantRow('White', '#FFFFFF')}
+                      className="px-2.5 py-1.5 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold text-[11px] rounded flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Color Variant</span>
+                    </button>
+                  </div>
+
+                  {/* Quick 1-click preset color chips */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-[#666666] mr-1">Quick Add:</span>
+                    {[
+                      { name: 'White', hex: '#FFFFFF' },
+                      { name: 'Red', hex: '#DC2626' },
+                      { name: 'Royal Blue', hex: '#1D4ED8' },
+                      { name: 'Black', hex: '#171717' },
+                      { name: 'Emerald Green', hex: '#059669' },
+                      { name: 'Maroon', hex: '#80182E' },
+                      { name: 'Gold', hex: '#C59B27' },
+                      { name: 'Sky Blue', hex: '#0284C7' }
+                    ].map((preset) => (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        onClick={() => handleAddColorVariantRow(preset.name, preset.hex)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-[#CCCCCC] hover:border-[#9F2089] bg-[#FAF8F5] text-[10px] font-semibold text-[#222222] cursor-pointer"
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-full border border-black/20"
+                          style={{ backgroundColor: preset.hex }}
+                        />
+                        <span>+ {preset.name}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Added Extra Color Variant Rows */}
+                  {productForm.colorVariants.length > 0 && (
+                    <div className="space-y-2">
+                      {productForm.colorVariants.map((variant, idx) => {
+                        const rowKb = variant.image ? getImageSizeKb(variant.image) : 0;
+                        const isUrlImg = /^https?:\/\//i.test(variant.image);
+                        return (
+                          <div
+                            key={idx}
+                            className="p-2.5 rounded-lg border border-[#E8E8E8] bg-[#FAF8F5] flex flex-col sm:flex-row sm:items-center gap-2.5"
+                          >
+                            {/* Thumbnail */}
+                            <div className="w-12 h-14 rounded border border-[#CCCCCC] bg-white overflow-hidden shrink-0 flex items-center justify-center">
+                              {variant.image ? (
+                                <img
+                                  src={variant.image}
+                                  alt={variant.colorName}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <ImageIcon className="w-4 h-4 text-[#AAAAAA]" />
+                              )}
+                            </div>
+
+                            {/* Color Name + Picker + Image URL/Upload */}
+                            <div className="flex-1 space-y-1.5 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="color"
+                                  value={variant.colorHex || '#6B1426'}
+                                  onChange={(e) =>
+                                    handleUpdateColorVariantRow(idx, { colorHex: e.target.value.toUpperCase() })
+                                  }
+                                  className="w-6 h-6 rounded cursor-pointer border border-[#CCCCCC] p-0 bg-white shrink-0"
+                                  title="Pick color hex"
+                                />
+                                <input
+                                  type="text"
+                                  value={variant.colorName}
+                                  onChange={(e) => handleUpdateColorVariantRow(idx, { colorName: e.target.value })}
+                                  placeholder="Color name (e.g. White, Red, Blue)"
+                                  className="flex-1 min-w-0 px-2 py-1 text-xs border border-[#CCCCCC] rounded bg-white font-semibold focus:border-[#9F2089] focus:outline-none"
+                                />
+                                {variant.image && (
+                                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-[#038D63] border border-emerald-200 shrink-0">
+                                    {rowKb} KB {isUrlImg ? '(URL)' : '(WebP)'}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveColorVariantRow(idx)}
+                                  className="p-1 text-red-600 hover:bg-red-50 rounded shrink-0 cursor-pointer"
+                                  title="Remove this color"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="url"
+                                  value={variant.image}
+                                  onChange={(e) => handleUpdateColorVariantRow(idx, { image: e.target.value })}
+                                  placeholder={`Paste ${variant.colorName || 'color'} image URL (~0.08 KB)`}
+                                  className="flex-1 min-w-0 px-2 py-1 text-[11px] font-mono border border-[#CCCCCC] rounded bg-white focus:border-[#9F2089] focus:outline-none"
+                                />
+                                <label className="px-2.5 py-1 bg-white border border-[#9F2089] text-[#9F2089] hover:bg-[#FDE5F4] rounded text-[11px] font-bold cursor-pointer shrink-0 flex items-center gap-1">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      setVariantCompressingIdx(idx);
+                                      try {
+                                        const res = await compressImageFile(file, 700, 700, 0.65, 14);
+                                        handleUpdateColorVariantRow(idx, { image: res.dataUrl });
+                                        showToast(`${variant.colorName} photo compressed to ${res.sizeKb} KB!`);
+                                      } catch (err) {
+                                        console.error(err);
+                                      } finally {
+                                        setVariantCompressingIdx(null);
+                                      }
+                                    }}
+                                  />
+                                  {variantCompressingIdx === idx ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Upload className="w-3 h-3" />
+                                  )}
+                                  <span>{variantCompressingIdx === idx ? '...' : 'Upload'}</span>
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Live Supabase Single-Link & Exact KB Summary */}
+                  {(() => {
+                    const livePrimary = productForm.images[0] || pendingImageUrl.trim();
+                    const liveExtras = productForm.colorVariants.filter((v) => v.image.trim());
+                    const liveVariants: ProductColorVariant[] =
+                      liveExtras.length > 0
+                        ? [
+                            ...(livePrimary
+                              ? [{ colorName: productForm.color, colorHex: productForm.colorHex, image: livePrimary }]
+                              : []),
+                            ...liveExtras
+                          ]
+                        : livePrimary
+                          ? [{ colorName: productForm.color, colorHex: productForm.colorHex, image: livePrimary }]
+                          : [];
+                    const allImgs = Array.from(
+                      new Set([
+                        ...productForm.images,
+                        ...(pendingImageUrl.trim() ? [pendingImageUrl.trim()] : []),
+                        ...liveExtras.map((v) => v.image.trim())
+                      ].filter(Boolean))
+                    );
+                    const encoded = encodeMultiColorSingleLink(
+                      liveVariants,
+                      allImgs,
+                      productForm.color,
+                      productForm.colorHex
+                    );
+                    const kb = getSupabaseEncodedPayloadKb(encoded);
+                    if (encoded.length === 0) return null;
+                    return (
+                      <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-md flex flex-wrap items-center justify-between gap-2 text-[11px] text-emerald-900">
+                        <div className="flex items-center gap-1.5 font-semibold">
+                          <Link2 className="w-3.5 h-3.5 text-[#038D63] shrink-0" />
+                          <span>
+                            Supabase Storage: <strong>1 Single Link</strong> ({liveVariants.length || 1} Color
+                            {(liveVariants.length || 1) > 1 ? 's' : ''})
+                          </span>
+                        </div>
+                        <span className="font-mono font-black text-[#038D63] bg-white px-2 py-0.5 rounded border border-emerald-200">
+                          {kb} KB total
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2108,7 +2417,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         if (file) {
                           setCategoryCompressing(true);
                           try {
-                            const res = await compressImageFile(file, 450, 450, 0.72);
+                            const res = await compressImageFile(file, 360, 360, 0.62, 10);
                             setCategoryForm({ ...categoryForm, imageUrl: res.dataUrl });
                             showToast(`Category image compressed to ${res.sizeKb} KB!`);
                           } catch (err) {
@@ -2127,7 +2436,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <span className="text-[11px] font-bold text-[#9F2089]">
                       {categoryCompressing ? 'Compressing...' : 'Click to Drop/Upload Image (Auto-Compressed)'}
                     </span>
-                    <span className="text-[9px] text-[#777777]">Saves in minimal KB (~15-25 KB) for Supabase</span>
+                    <span className="text-[9px] text-[#777777]">Saves in ultra-low KB (~5-10 KB) or URL (~0.08 KB) for Supabase</span>
                   </label>
 
                   <input
@@ -2282,7 +2591,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         if (file) {
                           setBannerCompressing(true);
                           try {
-                            const res = await compressImageFile(file, 1100, 450, 0.72);
+                            const res = await compressImageFile(file, 960, 380, 0.64, 20);
                             setBannerForm({ ...bannerForm, imageUrl: res.dataUrl });
                             showToast(`Banner image compressed to ${res.sizeKb} KB!`);
                           } catch (err) {
@@ -2301,7 +2610,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <span className="text-[11px] font-bold text-[#9F2089]">
                       {bannerCompressing ? 'Compressing...' : 'Click to Drop/Upload Banner Image'}
                     </span>
-                    <span className="text-[9px] text-[#777777]">Auto-compressed to ~25-45 KB to save database payload</span>
+                    <span className="text-[9px] text-[#777777]">Auto-compressed to ~12-20 KB (or ~0.08 KB URL) to save Supabase payload</span>
                   </label>
 
                   <input

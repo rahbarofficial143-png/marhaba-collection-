@@ -460,7 +460,9 @@ export default function App() {
         const matchesFabric = product.fabric.toLowerCase().includes(q);
         const matchesCluster = product.artisanCluster.toLowerCase().includes(q);
         const matchesTag = product.provenanceTag.toLowerCase().includes(q);
-        const matchesColor = (product.color || '').toLowerCase().includes(q);
+        const matchesColor =
+          (product.color || '').toLowerCase().includes(q) ||
+          (product.colorVariants || []).some((v) => v.colorName.toLowerCase().includes(q));
         const matchesSupplier = (product.supplierName || '').toLowerCase().includes(q);
         if (!matchesTitle && !matchesDesc && !matchesFabric && !matchesCluster && !matchesTag && !matchesColor && !matchesSupplier) {
           return false;
@@ -832,7 +834,7 @@ export default function App() {
                 isWishlisted={wishlist.some((p) => p.id === product.id)}
                 onToggleWishlist={handleToggleWishlist}
                 onQuickView={(p) => setQuickViewProduct(p)}
-                onAddToCart={(p) => handleAddToCart(p)}
+                onAddToCart={handleAddToCart}
               />
             ))}
           </div>

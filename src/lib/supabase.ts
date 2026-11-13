@@ -1,5 +1,6 @@
 import { Product, Banner, Category, Order, SupabaseConfig } from '../types';
 import { getBuiltInSupabaseDefaults } from './storefrontDefaults';
+import { encodeMultiColorSingleLink, decodeMultiColorSingleLink } from './multiColorCodec';
 
 export const SUPABASE_SQL_SCHEMA = `-- ==============================================================================
 -- MARHABA COLLECTION: COMPLETE PRODUCTION SUPABASE DATABASE SCHEMA & SEED DATA
@@ -397,6 +398,15 @@ export async function testSupabaseConnection(url: string, key: string): Promise<
 // ---------------------------------------------------------------------------
 
 export function productToRow(p: Product): Record<string, any> {
+  const singleEncodedImages = encodeMultiColorSingleLink(
+    p.colorVariants,
+    p.images,
+    p.color,
+    p.colorHex
+  );
+  const primaryVariantColor = p.colorVariants?.[0]?.colorName || p.color || 'Royal Burgundy';
+  const primaryVariantHex = p.colorVariants?.[0]?.colorHex || p.colorHex || '#6B1426';
+
   return {
     id: p.id,
     title: p.title,
@@ -408,14 +418,14 @@ export function productToRow(p: Product): Record<string, any> {
     supplier_name: p.supplierName || 'Marhaba Certified Loom Hub',
     supplier_rating: p.supplierRating ?? 4.8,
     m_trusted: p.mTrusted ?? true,
-    color: p.color || 'Royal Burgundy',
-    color_hex: p.colorHex || '#6B1426',
+    color: primaryVariantColor,
+    color_hex: primaryVariantHex,
     price: p.price,
     original_price: p.originalPrice,
     discount_percent: p.discountPercent,
     rating: p.rating,
     review_count: p.reviewCount,
-    images: p.images || [],
+    images: singleEncodedImages,
     fabric: p.fabric,
     weave_type: p.weaveType,
     blouse_piece: p.blousePiece,
@@ -434,6 +444,12 @@ export function productToRow(p: Product): Record<string, any> {
 }
 
 export function rowToProduct(row: any): Product {
+  const decoded = decodeMultiColorSingleLink(
+    row.images,
+    row.color || 'Royal Burgundy',
+    row.color_hex || '#6B1426'
+  );
+
   return {
     id: row.id,
     title: row.title,
@@ -445,14 +461,15 @@ export function rowToProduct(row: any): Product {
     supplierName: row.supplier_name,
     supplierRating: Number(row.supplier_rating || 4.8),
     mTrusted: row.m_trusted ?? true,
-    color: row.color,
-    colorHex: row.color_hex,
+    color: decoded.colorVariants[0]?.colorName || row.color,
+    colorHex: decoded.colorVariants[0]?.colorHex || row.color_hex,
+    colorVariants: decoded.colorVariants.length > 0 ? decoded.colorVariants : undefined,
     price: Number(row.price),
     originalPrice: Number(row.original_price),
     discountPercent: Number(row.discount_percent || 50),
     rating: Number(row.rating || 4.8),
     reviewCount: Number(row.review_count || 120),
-    images: Array.isArray(row.images) ? row.images : (row.images ? [row.images] : []),
+    images: decoded.images,
     fabric: row.fabric || 'Pure Silk',
     weaveType: row.weave_type || 'Handloom Weave',
     blousePiece: row.blouse_piece || 'Included',
