@@ -118,7 +118,7 @@ export interface Order {
     finalTotal: number;
   };
   couponCode?: string;
-  status: 'confirmed' | 'artisan_packing' | 'loom_inspection' | 'dispatched' | 'delivered';
+  status: 'pending' | 'confirmed' | 'artisan_packing' | 'loom_inspection' | 'dispatched' | 'out_for_delivery' | 'delivered';
   trackingNumber: string;
   estimatedDeliveryDate: string;
   // Specific UPI payment fields requested by user
@@ -132,4 +132,18 @@ export interface SupabaseConfig {
   isConnected: boolean;
   autoSync: boolean;
   lastSyncedAt?: string;
+}
+
+export interface UserProfile {
+  fullName: string;
+  phone: string;
+  age: string;
+  buildingOrVillage: string;
+  fullAddress: string;
+  landmark?: string;
+  city: string;
+  state: string;
+  pincode: string;
+  createdAt: string;
+  updatedAt: string;
 }

@@ -126,39 +126,51 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
 
                 <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#E2DCD5]">
                   <div className="relative flex items-start gap-3">
-                    <div className="absolute -left-6 w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center ring-4 ring-white">
-                      ✓
+                    <div className={`absolute -left-6 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ring-4 ring-white ${
+                      activeOrder.status === 'pending'
+                        ? 'bg-[#FECE57] text-[#4B0013]'
+                        : 'bg-emerald-600 text-white'
+                    }`}>
+                      {activeOrder.status === 'pending' ? '1' : '✓'}
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-[#111C2D]">Order Confirmed</div>
+                      <div className="text-xs font-bold text-[#111C2D]">
+                        {activeOrder.status === 'pending' ? 'Order Pending Confirmation' : 'Order Confirmed'}
+                      </div>
                       <div className="text-[11px] text-[#554243]">Order registered for {activeOrder.shippingAddress.fullName}.</div>
                     </div>
                   </div>
 
                   <div className="relative flex items-start gap-3">
                     <div className={`absolute -left-6 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ring-4 ring-white ${
-                      ['artisan_packing', 'loom_inspection', 'dispatched', 'delivered'].includes(activeOrder.status)
+                      ['artisan_packing', 'loom_inspection', 'dispatched', 'out_for_delivery', 'delivered'].includes(activeOrder.status)
                         ? 'bg-emerald-600 text-white'
-                        : 'bg-[#FECE57] text-[#4B0013]'
+                        : activeOrder.status === 'confirmed'
+                          ? 'bg-[#FECE57] text-[#4B0013]'
+                          : 'bg-[#E2DCD5] text-[#888888]'
                     }`}>
-                      {['artisan_packing', 'loom_inspection', 'dispatched', 'delivered'].includes(activeOrder.status) ? '✓' : '2'}
+                      {['artisan_packing', 'loom_inspection', 'dispatched', 'out_for_delivery', 'delivered'].includes(activeOrder.status) ? '✓' : '2'}
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-[#111C2D]">Loom Packing & Quality Inspection</div>
-                      <div className="text-[11px] text-[#554243]">Handloom quality check & protective packaging.</div>
+                      <div className="text-xs font-bold text-[#111C2D]">Packed &amp; Quality Checked</div>
+                      <div className="text-[11px] text-[#554243]">Handloom quality check &amp; protective packaging.</div>
                     </div>
                   </div>
 
                   <div className="relative flex items-start gap-3">
                     <div className={`absolute -left-6 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ring-4 ring-white ${
-                      ['dispatched', 'delivered'].includes(activeOrder.status)
+                      ['out_for_delivery', 'delivered'].includes(activeOrder.status)
                         ? 'bg-emerald-600 text-white'
-                        : 'bg-[#E2DCD5] text-[#888888]'
+                        : activeOrder.status === 'dispatched'
+                          ? 'bg-[#FECE57] text-[#4B0013]'
+                          : 'bg-[#E2DCD5] text-[#888888]'
                     }`}>
-                      {['dispatched', 'delivered'].includes(activeOrder.status) ? '✓' : '3'}
+                      {['out_for_delivery', 'delivered'].includes(activeOrder.status) ? '✓' : '3'}
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-[#111C2D]">Dispatched & Out for Delivery</div>
+                      <div className="text-xs font-bold text-[#111C2D]">
+                        {activeOrder.status === 'delivered' ? 'Delivered' : 'Dispatched & Out for Delivery'}
+                      </div>
                       <div className="text-[11px] text-[#554243]">
                         Delivery to {activeOrder.shippingAddress.city} by {activeOrder.estimatedDeliveryDate}.
                       </div>

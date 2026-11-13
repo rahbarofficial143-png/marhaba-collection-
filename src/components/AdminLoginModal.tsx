@@ -28,9 +28,11 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     const cleanUser = username.trim();
     const cleanPass = password.trim();
 
-    // Verification against user requested credentials
+    // Verification against owner credentials
     if (cleanUser === 'RAHBAR786' && cleanPass === 'RAHBAR7860') {
       sessionStorage.setItem('marhaba_admin_auth', 'true');
+      setUsername('');
+      setPassword('');
       setIsSubmitting(false);
       onLoginSuccess();
     } else {
@@ -102,12 +104,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 type="text"
                 required
                 autoFocus
+                autoComplete="off"
                 value={username}
                 onChange={(e) => {
                   setUsername(e.target.value);
                   setError(null);
                 }}
-                placeholder="Enter username (RAHBAR786)"
+                placeholder="Enter admin username"
                 className="w-full pl-9 pr-3 py-2.5 text-xs font-medium border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none"
               />
             </div>
@@ -125,12 +128,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="off"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
                   setError(null);
                 }}
-                placeholder="Enter password (RAHBAR7860)"
+                placeholder="Enter admin password"
                 className="w-full pl-9 pr-10 py-2.5 text-xs font-medium border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none"
               />
               <button

@@ -13,11 +13,13 @@ import { Footer } from './components/Footer';
 import { AdminPanel } from './components/AdminPanel';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { CreateAccountModal } from './components/CreateAccountModal';
+import { ProfileModal } from './components/ProfileModal';
 import { PRODUCTS } from './data/products';
 import { INITIAL_BANNERS } from './data/banners';
 import { INITIAL_CATEGORIES } from './data/categories';
-import { Product, Banner, Category, CartItem, FilterState, Order } from './types';
-import { Sparkles, ShoppingBag, Settings } from 'lucide-react';
+import { Product, Banner, Category, CartItem, FilterState, Order, UserProfile } from './types';
+import { Sparkles, ShoppingBag } from 'lucide-react';
 import { 
   getSupabaseConfig, 
   hasLocalSupabaseOverride,
@@ -333,6 +335,47 @@ export default function App() {
     sortBy: 'featured'
   });
 
+  // User Account & Profile State (persisted permanently on device until app/data is deleted)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => {
+    try {
+      const stored = localStorage.getItem('marhaba_user_profile');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.fullName && parsed.phone) return parsed;
+      }
+    } catch (e) {
+      console.error('Error loading user profile', e);
+    }
+    return null;
+  });
+
+  const [myOrderIds, setMyOrderIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('marhaba_my_order_ids');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error('Error loading user order IDs', e);
+    }
+    return [];
+  });
+
+  const [isCreateAccountOpen, setIsCreateAccountOpen] = useState<boolean>(() => !userProfile);
+  const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
+  const [profileInitialTab, setProfileInitialTab] = useState<'profile' | 'orders'>('profile');
+
+  const handleSaveUserProfile = (profile: UserProfile) => {
+    setUserProfile(profile);
+    try {
+      localStorage.setItem('marhaba_user_profile', JSON.stringify(profile));
+    } catch (e) {
+      console.error('Failed saving user profile', e);
+    }
+    setIsCreateAccountOpen(false);
+  };
+
   // Modals & Drawers
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -504,6 +547,15 @@ export default function App() {
 
   const handleOrderPlaced = (order: Order) => {
     setRecentOrders((prev) => [order, ...prev]);
+    setMyOrderIds((prev) => {
+      const next = prev.includes(order.id) ? prev : [order.id, ...prev];
+      try {
+        localStorage.setItem('marhaba_my_order_ids', JSON.stringify(next));
+      } catch (e) {
+        console.error('Failed saving my order IDs', e);
+      }
+      return next;
+    });
     setCart([]);
     const cfg = getSupabaseConfig();
     if (cfg.url && cfg.anonKey) {
@@ -512,6 +564,15 @@ export default function App() {
       );
     }
   };
+
+  // Orders belonging to this user (from first order to latest)
+  const myOrders = useMemo(() => {
+    const idSet = new Set(myOrderIds);
+    const userPhone = userProfile?.phone?.trim();
+    return recentOrders
+      .filter((o) => idSet.has(o.id) || (userPhone && o.shippingAddress?.phone?.trim() === userPhone))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [recentOrders, myOrderIds, userProfile]);
 
   // ==========================================
   // ADMIN ACTIONS (Products, Categories, Banners, Orders)
@@ -647,18 +708,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F8F8F9] text-[#222222] flex flex-col font-sans selection:bg-[#9F2089] selection:text-white">
-      {/* Floating Quick Admin Toggle */}
-      <div className="fixed bottom-4 left-4 z-40 hidden sm:block">
-        <button
-          onClick={handleTriggerAdminLogin}
-          className="flex items-center gap-2 bg-[#9F2089] hover:bg-[#80182E] text-white text-xs font-bold px-3.5 py-2 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95 border-2 border-white"
-          title="Open Admin & Inventory Management"
-        >
-          <Settings className="w-4 h-4" />
-          <span>Marhaba Admin Panel ({products.length})</span>
-        </button>
-      </div>
-
       {/* Header */}
       <Header
         categories={categories}
@@ -673,7 +722,15 @@ export default function App() {
         onOpenWishlist={() => setIsWishlistOpen(true)}
         onTriggerAdminLogin={handleTriggerAdminLogin}
         onOpenArtisans={() => setIsArtisansOpen(true)}
-        onOpenTracking={() => setIsTrackingOpen(true)}
+        onOpenTracking={() => {
+          setProfileInitialTab('orders');
+          setIsProfileOpen(true);
+        }}
+        onOpenProfile={() => {
+          setProfileInitialTab('profile');
+          setIsProfileOpen(true);
+        }}
+        userName={userProfile?.fullName}
       />
 
       {/* Hero Section (banners + dynamic category bubbles) */}
@@ -734,16 +791,6 @@ export default function App() {
               Direct from generational weaver clusters in Varanasi, Surat, Chanderi & Kanchipuram
             </div>
           </div>
-
-          <div className="flex items-center gap-2 text-xs">
-            <button
-              onClick={handleTriggerAdminLogin}
-              className="text-[#9F2089] hover:underline font-bold sm:hidden flex items-center gap-1"
-            >
-              <Settings className="w-3 h-3" />
-              <span>Admin</span>
-            </button>
-          </div>
         </div>
 
         {filteredProducts.length === 0 ? (
@@ -763,17 +810,10 @@ export default function App() {
               </h3>
               <p className="text-xs text-[#666666]">
                 {products.length === 0
-                  ? 'Store inventory is currently empty. Add products, banners, and categories from the Admin Panel.'
+                  ? 'New handcrafted ethnic collections are arriving soon. Check back shortly!'
                   : 'Try adjusting your price or filter selections, or reset filters to see all creations.'}
               </p>
-              {products.length === 0 ? (
-                <button
-                  onClick={handleTriggerAdminLogin}
-                  className="px-5 py-2.5 bg-[#9F2089] text-white text-xs font-bold rounded hover:bg-[#80182E] transition-colors"
-                >
-                  Open Admin Panel
-                </button>
-              ) : (
+              {products.length > 0 && (
                 <button
                   onClick={handleResetFilters}
                   className="px-5 py-2.5 bg-[#9F2089] text-white text-xs font-bold rounded hover:bg-[#80182E] transition-colors"
@@ -803,7 +843,10 @@ export default function App() {
       <Footer
         onSelectCategory={handleSelectCategory}
         onOpenArtisans={() => setIsArtisansOpen(true)}
-        onOpenTracking={() => setIsTrackingOpen(true)}
+        onOpenTracking={() => {
+          setProfileInitialTab('orders');
+          setIsProfileOpen(true);
+        }}
       />
 
       {/* Product Detail Modal */}
@@ -843,6 +886,7 @@ export default function App() {
         couponDiscount={appliedCouponInfo.discount}
         appliedCode={appliedCouponInfo.code}
         onOrderPlaced={handleOrderPlaced}
+        userProfile={userProfile}
       />
 
       {/* Artisan Guilds Modal */}
@@ -859,6 +903,24 @@ export default function App() {
         isOpen={isTrackingOpen}
         onClose={() => setIsTrackingOpen(false)}
         recentOrders={recentOrders}
+      />
+
+      {/* User Profile & My Orders Modal */}
+      <ProfileModal
+        isOpen={isProfileOpen}
+        initialTab={profileInitialTab}
+        onClose={() => setIsProfileOpen(false)}
+        userProfile={userProfile}
+        onUpdateProfile={handleSaveUserProfile}
+        onOpenCreateAccount={() => setIsCreateAccountOpen(true)}
+        orders={myOrders}
+      />
+
+      {/* First-Launch Create Account Modal */}
+      <CreateAccountModal
+        isOpen={isCreateAccountOpen && !isAdminLoginOpen}
+        onSaveAccount={handleSaveUserProfile}
+        onTriggerAdminLogin={handleTriggerAdminLogin}
       />
 
       {/* Wishlist Drawer */}

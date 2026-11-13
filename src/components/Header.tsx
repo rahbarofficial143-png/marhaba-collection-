@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Search, Heart, ShoppingBag, Smartphone, Store, User, Settings, X, Sparkles, Download, CheckCircle2, Share, MoreVertical, RefreshCw } from 'lucide-react';
+import { Search, Heart, ShoppingBag, Smartphone, Store, User, X, Sparkles, Download, CheckCircle2, Share, MoreVertical, RefreshCw } from 'lucide-react';
 import { Category } from '../types';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
@@ -17,6 +17,8 @@ interface HeaderProps {
   onTriggerAdminLogin: () => void;
   onOpenArtisans: () => void;
   onOpenTracking: () => void;
+  onOpenProfile: () => void;
+  userName?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,7 +34,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenWishlist,
   onTriggerAdminLogin,
   onOpenArtisans,
-  onOpenTracking
+  onOpenTracking,
+  onOpenProfile,
+  userName
 }) => {
   const [showAppPrompt, setShowAppPrompt] = useState(false);
   const [installFeedback, setInstallFeedback] = useState<string | null>(null);
@@ -133,11 +137,8 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
             <span className="text-[9px] font-bold text-[#C59B27] tracking-widest uppercase mt-0.5">
-              Haute Handloom & Direct Looms
+              Haute Handloom &amp; Direct Looms
             </span>
-            {clickCount > 1 && (
-              <span className="absolute -top-1 -right-4 w-2 h-2 rounded-full bg-[#FECE57] animate-ping" />
-            )}
           </button>
         </div>
 
@@ -177,20 +178,18 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Mobile Admin Button */}
+          {/* Profile & My Orders (Visible on both Mobile & Desktop) */}
           <button
-            onClick={onTriggerAdminLogin}
-            className="md:hidden flex items-center gap-1 text-[11px] font-bold text-white bg-[#9F2089] px-2 py-1 rounded"
+            type="button"
+            onClick={onOpenProfile}
+            className="flex flex-col items-center cursor-pointer group text-[#444444] hover:text-[#9F2089] transition-colors focus:outline-none"
+            aria-label="Profile and My Orders"
           >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Admin</span>
-          </button>
-
-          {/* Profile */}
-          <div className="hidden lg:flex flex-col items-center cursor-pointer group text-[#444444] hover:text-[#9F2089] transition-colors">
             <User className="w-5 h-5" />
-            <span className="text-[11px] font-medium mt-0.5">Profile</span>
-          </div>
+            <span className="text-[11px] font-medium mt-0.5 max-w-[68px] truncate">
+              {userName ? userName.split(' ')[0] : 'Profile'}
+            </span>
+          </button>
 
           {/* Wishlist */}
           <button

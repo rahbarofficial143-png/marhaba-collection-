@@ -1386,10 +1386,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           }
                           className="px-2.5 py-1.5 text-xs font-bold border rounded bg-[#FAF8F5] border-[#CCCCCC] focus:border-[#9F2089]"
                         >
+                          <option value="pending">Pending</option>
                           <option value="confirmed">Confirmed</option>
-                          <option value="artisan_packing">Loom Packing</option>
+                          <option value="artisan_packing">Packed / Loom Packing</option>
                           <option value="loom_inspection">Quality Inspected</option>
-                          <option value="dispatched">Dispatched</option>
+                          <option value="dispatched">Shipped / Dispatched</option>
+                          <option value="out_for_delivery">Out for Delivery</option>
                           <option value="delivered">Delivered</option>
                         </select>
 

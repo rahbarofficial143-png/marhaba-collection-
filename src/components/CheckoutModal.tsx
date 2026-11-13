@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  X, ShieldCheck, CheckCircle2, Truck, CreditCard, Banknote, 
-  QrCode, Copy, Check, ExternalLink, ArrowRight, Smartphone
+  X, ShieldCheck, CheckCircle2, Truck, Banknote, 
+  Copy, Check, ArrowRight, UserCheck
 } from 'lucide-react';
-import { CartItem, Order } from '../types';
+import { CartItem, Order, UserProfile } from '../types';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -12,6 +12,34 @@ interface CheckoutModalProps {
   couponDiscount: number;
   appliedCode: string;
   onOrderPlaced: (order: Order) => void;
+  userProfile: UserProfile | null;
+}
+
+function buildAddressFromProfile(profile: UserProfile | null) {
+  if (!profile) {
+    return {
+      fullName: '',
+      phone: '',
+      pincode: '',
+      addressLine: '',
+      city: '',
+      state: '',
+      landmark: ''
+    };
+  }
+  const combinedLine = [profile.buildingOrVillage, profile.fullAddress]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join(', ');
+  return {
+    fullName: profile.fullName || '',
+    phone: profile.phone || '',
+    pincode: profile.pincode || '',
+    addressLine: combinedLine,
+    city: profile.city || '',
+    state: profile.state || '',
+    landmark: profile.landmark || ''
+  };
 }
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
@@ -20,29 +48,32 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   items,
   couponDiscount,
   appliedCode,
-  onOrderPlaced
+  onOrderPlaced,
+  userProfile
 }) => {
-  if (!isOpen) return null;
-
   const [step, setStep] = useState<'form' | 'confirmed'>('form');
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
 
-  // Address State
-  const [formData, setFormData] = useState({
-    fullName: 'Ananya Sharma',
-    phone: '9876543210',
-    pincode: '110001',
-    addressLine: 'Flat 402, Royal Palms, Connaught Place',
-    city: 'New Delhi',
-    state: 'Delhi',
-    landmark: 'Near Central Park'
-  });
+  // Address State (auto-filled from saved UserProfile, freely editable)
+  const [formData, setFormData] = useState(() => buildAddressFromProfile(userProfile));
 
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upi' | 'card'>('upi');
   const [utrNumber, setUtrNumber] = useState('');
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (isOpen) {
+      setStep('form');
+      setPlacedOrder(null);
+      setUtrNumber('');
+      setErrors({});
+      setFormData(buildAddressFromProfile(userProfile));
+    }
+  }, [isOpen, userProfile]);
+
+  if (!isOpen) return null;
 
   const merchantPhone = '9334808340';
   const merchantUpi = '9334808340@ybl';
@@ -168,10 +199,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               <div className="md:col-span-7 space-y-5">
                 {/* 1. Delivery Address */}
                 <div>
-                  <h3 className="text-xs font-bold text-[#222222] uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <Truck className="w-4 h-4 text-[#9F2089]" />
-                    <span>1. Delivery Address</span>
-                  </h3>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h3 className="text-xs font-bold text-[#222222] uppercase tracking-wider flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-[#9F2089]" />
+                      <span>1. Delivery Address</span>
+                    </h3>
+                    {userProfile && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData(buildAddressFromProfile(userProfile))}
+                        className="text-[11px] font-bold text-[#9F2089] hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>Use Saved Profile</span>
+                      </button>
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div className="sm:col-span-2">
