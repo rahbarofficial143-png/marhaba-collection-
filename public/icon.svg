@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="marhabaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4B0013" />
+      <stop offset="50%" stop-color="#80182E" />
+      <stop offset="100%" stop-color="#9F2089" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE58F" />
+      <stop offset="50%" stop-color="#FECE57" />
+      <stop offset="100%" stop-color="#C59B27" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#marhabaGrad)" />
+  <rect x="28" y="28" width="456" height="456" rx="84" fill="none" stroke="url(#goldGrad)" stroke-width="10" stroke-opacity="0.85" />
+  <polygon points="256,88 272,112 256,136 240,112" fill="url(#goldGrad)" />
+  <path d="M132 376 V174 H182 L256 278 L330 174 H380 V376 H332 V248 L272 332 H240 L180 248 V376 Z" fill="#FAF8F5" />
+  <rect x="164" y="396" width="184" height="8" rx="4" fill="url(#goldGrad)" />
+</svg>

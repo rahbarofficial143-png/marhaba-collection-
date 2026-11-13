@@ -1,0 +1,387 @@
+import React, { useState, useRef } from 'react';
+import { Search, Heart, ShoppingBag, Smartphone, Store, User, Settings, X, Sparkles, Download, CheckCircle2, Share, MoreVertical, RefreshCw } from 'lucide-react';
+import { Category } from '../types';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+
+interface HeaderProps {
+  categories: Category[];
+  activeCategory: string;
+  onSelectCategory: (catId: string) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  wishlistCount: number;
+  cartCount: number;
+  cartTotal: number;
+  onOpenCart: () => void;
+  onOpenWishlist: () => void;
+  onTriggerAdminLogin: () => void;
+  onOpenArtisans: () => void;
+  onOpenTracking: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({
+  categories,
+  activeCategory,
+  onSelectCategory,
+  searchQuery,
+  onSearchChange,
+  wishlistCount,
+  cartCount,
+  cartTotal,
+  onOpenCart,
+  onOpenWishlist,
+  onTriggerAdminLogin,
+  onOpenArtisans,
+  onOpenTracking
+}) => {
+  const [showAppPrompt, setShowAppPrompt] = useState(false);
+  const [installFeedback, setInstallFeedback] = useState<string | null>(null);
+  const [clickCount, setClickCount] = useState(0);
+  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
+
+  const handleMobileAppClick = async () => {
+    setInstallFeedback(null);
+    if (isInstallable) {
+      const outcome = await install();
+      if (outcome === 'accepted') {
+        setInstallFeedback('Marhaba Collection App is being installed on your device!');
+        return;
+      }
+    }
+    setShowAppPrompt(true);
+  };
+
+  // 5 consecutive clicks on "Marhaba Collection" logo opens the Admin Login modal
+  const handleLogoClick = () => {
+    onSelectCategory('all');
+    setClickCount((prev) => {
+      const next = prev + 1;
+      if (next >= 5) {
+        if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+        onTriggerAdminLogin();
+        return 0;
+      }
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = setTimeout(() => {
+        setClickCount(0);
+      }, 3000);
+      return next;
+    });
+  };
+
+  return (
+    <header className="sticky top-0 z-40 bg-white border-b border-[#E8E8E8] shadow-xs">
+      {/* Top Utilities Strip */}
+      <div className="bg-[#FAF8F5] border-b border-[#E8E8E8] text-[11px] text-[#555555] py-1.5 px-4 hidden md:block">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1 font-semibold text-[#038D63]">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Lowest Prices Every Day · Free Delivery & UPI / PhonePe (9334808340)</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-5">
+            {!isInstalled && (
+              <button
+                onClick={handleMobileAppClick}
+                className="text-[#9F2089] hover:text-[#4B0013] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Mobile App</span>
+              </button>
+            )}
+            <span className="text-[#DDDDDD]">|</span>
+            <button
+              onClick={onOpenArtisans}
+              className="hover:text-[#9F2089] flex items-center gap-1 transition-colors"
+            >
+              <Store className="w-3.5 h-3.5" />
+              <span>Master Weavers Guild</span>
+            </button>
+            <span className="text-[#DDDDDD]">|</span>
+            <button
+              onClick={onOpenTracking}
+              className="hover:text-[#9F2089] transition-colors"
+            >
+              Track Order
+            </button>
+            <span className="text-[#DDDDDD]">|</span>
+            <span className="text-[10px] text-[#888888]">
+              Owner Helpline: <strong className="text-[#9F2089]">9334808340</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Header Bar */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+        {/* Brand: Marhaba Collection with 5-Click Secret Admin Doorway */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleLogoClick}
+            className="flex flex-col text-left focus:outline-none group select-none relative cursor-pointer"
+            title="Marhaba Collection"
+          >
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-editorial text-2xl sm:text-3xl font-bold tracking-tight text-[#4B0013] group-hover:text-[#9F2089] transition-colors leading-none">
+                Marhaba
+              </span>
+              <span className="text-xl sm:text-2xl font-light text-[#9F2089] tracking-tight">
+                Collection
+              </span>
+            </div>
+            <span className="text-[9px] font-bold text-[#C59B27] tracking-widest uppercase mt-0.5">
+              Haute Handloom & Direct Looms
+            </span>
+            {clickCount > 1 && (
+              <span className="absolute -top-1 -right-4 w-2 h-2 rounded-full bg-[#FECE57] animate-ping" />
+            )}
+          </button>
+        </div>
+
+        {/* Global Search Input */}
+        <div className="relative flex-1 max-w-xl hidden sm:block">
+          <div className="relative flex items-center">
+            <Search className="w-4 h-4 text-[#888888] absolute left-3.5 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search Sarees, Lehengas, Kurti, Banarasi Silk or Product Code..."
+              className="w-full pl-10 pr-9 py-2 text-xs sm:text-sm bg-white border border-[#CCCCCC] rounded-md focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none transition-all placeholder:text-[#999999]"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => onSearchChange('')}
+                className="absolute right-3 text-[#888888] hover:text-[#222222]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Header Right Actions */}
+        <div className="flex items-center gap-3 sm:gap-6 shrink-0">
+          {/* Mobile Install App Button (visible on mobile when not yet installed) */}
+          {!isInstalled && (
+            <button
+              onClick={handleMobileAppClick}
+              className="md:hidden flex items-center gap-1 text-[11px] font-bold text-[#9F2089] bg-[#FDE5F4] border border-[#9F2089]/30 px-2 py-1 rounded"
+              title="Install Marhaba Mobile App"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>App</span>
+            </button>
+          )}
+
+          {/* Mobile Admin Button */}
+          <button
+            onClick={onTriggerAdminLogin}
+            className="md:hidden flex items-center gap-1 text-[11px] font-bold text-white bg-[#9F2089] px-2 py-1 rounded"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span>Admin</span>
+          </button>
+
+          {/* Profile */}
+          <div className="hidden lg:flex flex-col items-center cursor-pointer group text-[#444444] hover:text-[#9F2089] transition-colors">
+            <User className="w-5 h-5" />
+            <span className="text-[11px] font-medium mt-0.5">Profile</span>
+          </div>
+
+          {/* Wishlist */}
+          <button
+            onClick={onOpenWishlist}
+            className="relative flex flex-col items-center text-[#444444] hover:text-[#9F2089] transition-colors focus:outline-none"
+            aria-label="Wishlist"
+          >
+            <div className="relative">
+              <Heart className="w-5 h-5" />
+              {wishlistCount > 0 && (
+                <span className="absolute -top-1.5 -right-2 w-4 h-4 bg-[#9F2089] text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                  {wishlistCount}
+                </span>
+              )}
+            </div>
+            <span className="text-[11px] font-medium mt-0.5 hidden sm:block">Wishlist</span>
+          </button>
+
+          {/* Shopping Bag / Cart */}
+          <button
+            onClick={onOpenCart}
+            className="relative flex flex-col items-center text-[#444444] hover:text-[#9F2089] transition-colors focus:outline-none"
+            aria-label="Cart"
+          >
+            <div className="relative">
+              <ShoppingBag className="w-5 h-5" />
+              {cartCount > 0 && (
+                <span className="absolute -top-1.5 -right-2 w-4 h-4 bg-[#9F2089] text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                  {cartCount}
+                </span>
+              )}
+            </div>
+            <span className="text-[11px] font-medium mt-0.5 hidden sm:block">
+              {cartCount > 0 ? `₹${cartTotal.toLocaleString('en-IN')}` : 'Cart'}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Search Input */}
+      <div className="px-4 pb-2.5 sm:hidden">
+        <div className="relative flex items-center">
+          <Search className="w-4 h-4 text-[#888888] absolute left-3 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search Sarees, Lehengas, Kurtis, Jewelry..."
+            className="w-full pl-9 pr-8 py-2 text-xs bg-white border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => onSearchChange('')}
+              className="absolute right-2.5 text-[#888888]"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Dynamic Category Navigation Bar */}
+      <div className="border-t border-[#E8E8E8] bg-white overflow-x-auto scrollbar-none">
+        <div className="max-w-7xl mx-auto px-4 flex items-center gap-1 sm:gap-3 py-2">
+          {categories.map((cat) => {
+            const isActive = activeCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => onSelectCategory(cat.id)}
+                className={`whitespace-nowrap px-3 py-1.5 text-xs font-semibold rounded-md transition-all shrink-0 ${
+                  isActive
+                    ? 'bg-[#9F2089] text-white shadow-2xs font-bold'
+                    : 'text-[#444444] hover:text-[#9F2089] hover:bg-[#FDE5F4]/60'
+                }`}
+              >
+                {cat.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Mobile App Direct Install Modal */}
+      {showAppPrompt && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setShowAppPrompt(false)}
+        >
+          <div
+            className="bg-white rounded-xl p-6 max-w-md w-full text-center space-y-4 border border-[#E8E8E8] shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowAppPrompt(false)}
+              className="absolute top-3 right-3 p-1.5 text-[#666666] hover:text-[#222222] rounded-full hover:bg-black/5"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-14 h-14 bg-gradient-to-br from-[#4B0013] via-[#80182E] to-[#9F2089] text-white rounded-2xl flex items-center justify-center mx-auto shadow-md border border-[#FECE57]">
+              <Smartphone className="w-7 h-7 text-[#FECE57]" />
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg text-[#222222]">
+                Marhaba Collection Mobile App
+              </h3>
+              <p className="text-xs text-[#666666] mt-1">
+                Install Marhaba Collection directly on your phone as a standalone Android/iOS app — same store, instant launch from Home Screen, and live automatic updates whenever Admin adds or edits products.
+              </p>
+            </div>
+
+            {isInstalled ? (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center justify-center gap-2 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>App is already installed on your device!</span>
+              </div>
+            ) : isInstallable ? (
+              <button
+                onClick={async () => {
+                  const outcome = await install();
+                  if (outcome === 'accepted') {
+                    setInstallFeedback('Installing Marhaba Collection App on your device...');
+                    setShowAppPrompt(false);
+                  }
+                }}
+                className="w-full py-3 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold rounded-lg text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-colors cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Install App on Device Now</span>
+              </button>
+            ) : isIOS ? (
+              <div className="p-3.5 bg-[#FAF8F5] border border-[#E8E8E8] rounded-lg text-left text-xs space-y-2">
+                <div className="font-bold text-[#222222]">Install on iPhone / iPad (Safari):</div>
+                <ol className="space-y-1.5 text-[#555555] list-decimal list-inside">
+                  <li className="flex items-center gap-1.5">
+                    <span>Tap the</span>
+                    <Share className="w-3.5 h-3.5 text-[#9F2089] inline" />
+                    <strong>Share</strong>
+                    <span>button at the bottom of Safari.</span>
+                  </li>
+                  <li>
+                    Select <strong>"Add to Home Screen"</strong> and tap <strong>Add</strong>.
+                  </li>
+                </ol>
+              </div>
+            ) : (
+              <div className="p-3.5 bg-[#FAF8F5] border border-[#E8E8E8] rounded-lg text-left text-xs space-y-2">
+                <div className="font-bold text-[#222222]">Install on Android Phone (Chrome / Edge):</div>
+                <ol className="space-y-1.5 text-[#555555] list-decimal list-inside">
+                  <li>
+                    Open this store directly in <strong>Google Chrome</strong> (not inside an in-app browser).
+                  </li>
+                  <li className="flex items-center gap-1 flex-wrap">
+                    <span>Tap</span>
+                    <MoreVertical className="w-3.5 h-3.5 text-[#9F2089] inline" />
+                    <strong>Menu (⋮)</strong>
+                    <span>➔</span>
+                    <strong>"Install app"</strong>
+                    <span>or</span>
+                    <strong>"Add to Home screen"</strong>.
+                  </li>
+                  <li>
+                    Chrome installs Marhaba Collection directly onto your phone like a native Android app (WebAPK) with auto-updates!
+                  </li>
+                </ol>
+              </div>
+            )}
+
+            {installFeedback && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-800 font-semibold">
+                {installFeedback}
+              </div>
+            )}
+
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-[#038D63] font-medium bg-emerald-50/70 py-2 px-3 rounded-md border border-emerald-100">
+              <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+              <span>Admin changes sync live across all installed user devices.</span>
+            </div>
+
+            <button
+              onClick={() => setShowAppPrompt(false)}
+              className="w-full py-2.5 bg-white border border-[#CCCCCC] text-[#222222] font-bold rounded-lg text-xs hover:bg-[#FAF8F5] transition-colors"
+            >
+              Continue to Store
+            </button>
+          </div>
+        </div>
+      )}
+    </header>
+  );
+};

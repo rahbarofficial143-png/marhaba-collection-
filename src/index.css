@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --color-meesho-pink: #9F2089;
+  --color-meesho-pink-dark: #80182E;
+  --color-meesho-pink-light: #FDE5F4;
+  --color-meesho-green: #038D63;
+  --color-meesho-teal: #10B981;
+  --color-meesho-bg: #F8F8F9;
+  --color-meesho-card: #FFFFFF;
+  --color-meesho-border: #E8E8E8;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #F8F8F9;
+  color: #222222;
+}
+
+.font-editorial {
+  font-family: var(--font-serif);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideLeft {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slideLeft {
+  animation: slideLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

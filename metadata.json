@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Marhaba Elegance",
+  "description": "High-tier multi-vendor fashion marketplace tailored to modern ethnic and contemporary Indian apparel, combining artisanal heritage with seamless discovery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
