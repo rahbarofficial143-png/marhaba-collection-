@@ -20,6 +20,10 @@ import { Product, Banner, Category, CartItem, FilterState, Order } from './types
 import { Sparkles, ShoppingBag, Settings } from 'lucide-react';
 import { 
   getSupabaseConfig, 
+  saveSupabaseConfig,
+  fetchServerSupabaseConfig,
+  saveServerSupabaseConfig,
+  fetchStorefrontDataFromServer,
   fetchCategoriesFromSupabase, 
   fetchProductsFromSupabase, 
   fetchBannersFromSupabase, 
@@ -135,20 +139,48 @@ export default function App() {
 
   // Live Sync from Supabase across all connected user devices
   const isSyncingRef = useRef(false);
+  const hasSeededServerConfigRef = useRef(false);
 
   const syncFromSupabase = useCallback(async () => {
-    const cfg = getSupabaseConfig();
-    if (!cfg.url || !cfg.anonKey || isSyncingRef.current) return;
+    if (isSyncingRef.current) return;
     if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 
     isSyncingRef.current = true;
     try {
-      const [remoteCategories, remoteProducts, remoteBanners, remoteOrders] = await Promise.all([
+      let cfg = getSupabaseConfig();
+
+      // Fetch server-stored Supabase credentials so mobile devices & other browsers auto-connect
+      const serverCfg = await fetchServerSupabaseConfig();
+      if (!cfg.url || !cfg.anonKey) {
+        if (serverCfg) {
+          cfg = serverCfg;
+          saveSupabaseConfig(serverCfg);
+          setSupabaseConfigVersion((v) => v + 1);
+        }
+      } else if (!serverCfg && !hasSeededServerConfigRef.current) {
+        // One-time auto-seed: if Admin already entered keys in this browser earlier, share them via server
+        hasSeededServerConfigRef.current = true;
+        saveServerSupabaseConfig(cfg.url, cfg.anonKey);
+      }
+
+      if (!cfg.url || !cfg.anonKey) return;
+
+      let [remoteCategories, remoteProducts, remoteBanners, remoteOrders] = await Promise.all([
         fetchCategoriesFromSupabase(cfg),
         fetchProductsFromSupabase(cfg),
         fetchBannersFromSupabase(cfg),
         fetchOrdersFromSupabase(cfg)
       ]);
+
+      // Fallback to same-origin server proxy if browser direct fetch failed on mobile/network
+      if (remoteProducts === null && remoteBanners === null) {
+        const serverData = await fetchStorefrontDataFromServer();
+        if (serverData) {
+          remoteCategories = remoteCategories ?? serverData.categories;
+          remoteProducts = serverData.products;
+          remoteBanners = serverData.banners;
+        }
+      }
 
       if (remoteCategories && remoteCategories.length > 0) {
         setCategories(remoteCategories);
@@ -601,7 +633,10 @@ export default function App() {
         onDeleteOrder={handleDeleteOrder}
         onResetToDemo={handleResetToDemo}
         onRefreshFromSupabase={syncFromSupabase}
-        onClose={() => setIsAdminOpen(false)}
+        onClose={() => {
+          setIsAdminOpen(false);
+          syncFromSupabase();
+        }}
         onLogout={handleAdminLogout}
       />
     );

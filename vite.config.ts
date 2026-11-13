@@ -49,10 +49,19 @@ export default defineConfig(() => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           navigateFallback: 'index.html',
+          navigateFallbackDenylist: [/^\/api\//],
           cleanupOutdatedCaches: true,
           runtimeCaching: [
             {
+              urlPattern: /\/api\/.*/i,
+              handler: 'NetworkOnly',
+            },
+            {
               urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+              handler: 'NetworkOnly',
+            },
+            {
+              urlPattern: /\/rest\/v1\/.*/i,
               handler: 'NetworkOnly',
             },
             {

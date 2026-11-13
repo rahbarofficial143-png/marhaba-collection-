@@ -12,6 +12,9 @@ import {
   getSupabaseConfig, 
   saveSupabaseConfig, 
   clearSupabaseConfig,
+  fetchServerSupabaseConfig,
+  saveServerSupabaseConfig,
+  clearServerSupabaseConfig,
   cleanSupabaseUrl,
   getLastSupabaseError,
   testSupabaseConnection,
@@ -574,7 +577,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // ==========================================
   // SUPABASE CONNECT & TEST & MASTER SYNC
   // ==========================================
-  const handleSaveSupabaseOnly = () => {
+  React.useEffect(() => {
+    if (supabaseConfig.url.trim() && supabaseConfig.anonKey.trim()) {
+      fetchServerSupabaseConfig().then((serverCfg) => {
+        if (!serverCfg) {
+          saveServerSupabaseConfig(supabaseConfig.url, supabaseConfig.anonKey);
+        }
+      });
+    }
+  }, []);
+
+  const handleSaveSupabaseOnly = async () => {
     const trimmedUrl = cleanSupabaseUrl(supabaseConfig.url);
     const trimmedKey = supabaseConfig.anonKey.trim();
     if (!trimmedUrl || !trimmedKey) {
@@ -591,9 +604,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     };
     setSupabaseConfig(updated);
     saveSupabaseConfig(updated);
+    await saveServerSupabaseConfig(trimmedUrl, trimmedKey);
     setSupabaseTestResult(null);
     setTestErrorMessage(null);
-    showToast('Supabase URL & Anon Key saved! Syncing live data...');
+    showToast('Supabase URL & Anon Key saved for all devices! Syncing live data...');
     if (onRefreshFromSupabase) {
       onRefreshFromSupabase();
     }
@@ -614,7 +628,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const res = await testSupabaseConnection(trimmedUrl, trimmedKey);
     setSupabaseTesting(false);
 
-    // Always persist the trimmed URL & Key in localStorage so they are never lost
+    // Always persist the trimmed URL & Key in localStorage AND on the server so every browser/mobile sees it
     const savedCfg: SupabaseConfig = {
       ...supabaseConfig,
       url: trimmedUrl,
@@ -625,23 +639,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     };
     setSupabaseConfig(savedCfg);
     saveSupabaseConfig(savedCfg);
+    await saveServerSupabaseConfig(trimmedUrl, trimmedKey);
     window.dispatchEvent(new Event('marhaba-supabase-config-updated'));
 
     if (res.success) {
       setSupabaseTestResult('success');
-      showToast('Connected & Saved to Supabase! Table Editor is ready.');
+      showToast('Connected & Saved for all browsers & mobile! Table Editor is ready.');
       if (onRefreshFromSupabase) {
         onRefreshFromSupabase();
       }
     } else {
       setSupabaseTestResult('error');
       setTestErrorMessage(res.message);
-      showToast('URL & Key saved locally, lekin Supabase check mein error aaya — neeche message dekhein.', 'error');
+      showToast('URL & Key saved, lekin Supabase check mein error aaya — neeche message dekhein.', 'error');
     }
   };
 
-  const handleClearSupabase = () => {
+  const handleClearSupabase = async () => {
     clearSupabaseConfig();
+    await clearServerSupabaseConfig();
     const emptyCfg: SupabaseConfig = { url: '', anonKey: '', isConnected: false, autoSync: true };
     setSupabaseConfig(emptyCfg);
     setSupabaseTestResult(null);
@@ -653,6 +669,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleSyncAllToSupabase = async () => {
     const cfg = getActiveCfg();
+    if (cfg.url && cfg.anonKey) {
+      await saveServerSupabaseConfig(cfg.url, cfg.anonKey);
+    }
     setSyncingAll(true);
     setSyncResult(null);
     const res = await batchSyncAllToSupabase(categories, products, banners, orders, cfg);

@@ -237,6 +237,73 @@ export function clearSupabaseConfig(): void {
   }
 }
 
+export async function fetchServerSupabaseConfig(): Promise<SupabaseConfig | null> {
+  try {
+    const res = await fetch('/api/supabase-config', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data?.configured && data?.url && data?.anonKey) {
+      return {
+        url: cleanSupabaseUrl(data.url),
+        anonKey: String(data.anonKey).trim(),
+        isConnected: true,
+        autoSync: true
+      };
+    }
+  } catch (err) {
+    console.warn('Could not fetch server Supabase config', err);
+  }
+  return null;
+}
+
+export async function saveServerSupabaseConfig(url: string, anonKey: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/supabase-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: cleanSupabaseUrl(url),
+        anonKey: anonKey.trim()
+      })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Could not persist Supabase config on server', err);
+    return false;
+  }
+}
+
+export async function clearServerSupabaseConfig(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/supabase-config', { method: 'DELETE' });
+    return res.ok;
+  } catch (err) {
+    console.warn('Could not clear server Supabase config', err);
+    return false;
+  }
+}
+
+export async function fetchStorefrontDataFromServer(): Promise<{
+  categories: Category[] | null;
+  products: Product[] | null;
+  banners: Banner[] | null;
+} | null> {
+  try {
+    const res = await fetch('/api/storefront-data', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data?.configured) return null;
+    return {
+      categories: Array.isArray(data.categories) ? data.categories.map(rowToCategory) : null,
+      products: Array.isArray(data.products) ? data.products.map(rowToProduct) : null,
+      banners: Array.isArray(data.banners) ? data.banners.map(rowToBanner) : null
+    };
+  } catch (err) {
+    console.warn('Could not fetch storefront fallback data from server', err);
+    return null;
+  }
+}
+
 // Clean URL helper
 export function cleanSupabaseUrl(url: string): string {
   let clean = url.trim().replace(/\/+$/, '');
@@ -547,64 +614,55 @@ async function upsertResilient(
   return await postgrestRequest(table, 'POST', payload, config, preferHeader);
 }
 
+async function fetchTableWithFallback(
+  table: string,
+  orderBy: string,
+  config?: SupabaseConfig
+): Promise<any[] | null> {
+  try {
+    const rows = await postgrestRequest(`${table}?select=*&order=${orderBy}`, 'GET', undefined, config);
+    if (Array.isArray(rows)) return rows;
+  } catch {
+    try {
+      const rows = await postgrestRequest(`${table}?select=*`, 'GET', undefined, config);
+      if (Array.isArray(rows)) return rows;
+    } catch (err) {
+      console.warn(`Could not fetch ${table} from Supabase`, err);
+    }
+  }
+  return null;
+}
+
 /**
  * Fetch all products directly from Supabase Table Editor
  */
 export async function fetchProductsFromSupabase(config?: SupabaseConfig): Promise<Product[] | null> {
-  try {
-    const rows = await postgrestRequest('products?select=*&order=created_at.desc', 'GET', undefined, config);
-    if (Array.isArray(rows)) {
-      return rows.map(rowToProduct);
-    }
-  } catch (err) {
-    console.warn('Could not fetch products from Supabase', err);
-  }
-  return null;
+  const rows = await fetchTableWithFallback('products', 'created_at.desc', config);
+  return rows ? rows.map(rowToProduct) : null;
 }
 
 /**
  * Fetch all categories directly from Supabase Table Editor
  */
 export async function fetchCategoriesFromSupabase(config?: SupabaseConfig): Promise<Category[] | null> {
-  try {
-    const rows = await postgrestRequest('categories?select=*&order=created_at.asc', 'GET', undefined, config);
-    if (Array.isArray(rows)) {
-      return rows.map(rowToCategory);
-    }
-  } catch (err) {
-    console.warn('Could not fetch categories from Supabase', err);
-  }
-  return null;
+  const rows = await fetchTableWithFallback('categories', 'created_at.asc', config);
+  return rows ? rows.map(rowToCategory) : null;
 }
 
 /**
  * Fetch all banners directly from Supabase Table Editor
  */
 export async function fetchBannersFromSupabase(config?: SupabaseConfig): Promise<Banner[] | null> {
-  try {
-    const rows = await postgrestRequest('banners?select=*&order=created_at.asc', 'GET', undefined, config);
-    if (Array.isArray(rows)) {
-      return rows.map(rowToBanner);
-    }
-  } catch (err) {
-    console.warn('Could not fetch banners from Supabase', err);
-  }
-  return null;
+  const rows = await fetchTableWithFallback('banners', 'created_at.asc', config);
+  return rows ? rows.map(rowToBanner) : null;
 }
 
 /**
  * Fetch all orders directly from Supabase Table Editor
  */
 export async function fetchOrdersFromSupabase(config?: SupabaseConfig): Promise<Order[] | null> {
-  try {
-    const rows = await postgrestRequest('orders?select=*&order=created_at.desc', 'GET', undefined, config);
-    if (Array.isArray(rows)) {
-      return rows.map(rowToOrder);
-    }
-  } catch (err) {
-    console.warn('Could not fetch orders from Supabase', err);
-  }
-  return null;
+  const rows = await fetchTableWithFallback('orders', 'created_at.desc', config);
+  return rows ? rows.map(rowToOrder) : null;
 }
 
 /**
