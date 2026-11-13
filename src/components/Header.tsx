@@ -40,8 +40,8 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [showAppPrompt, setShowAppPrompt] = useState(false);
   const [installFeedback, setInstallFeedback] = useState<string | null>(null);
-  const [clickCount, setClickCount] = useState(0);
-  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const clickCountRef = useRef(0);
+  const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
 
   const handleMobileAppClick = async () => {
@@ -59,19 +59,17 @@ export const Header: React.FC<HeaderProps> = ({
   // 5 consecutive clicks on "Marhaba Collection" logo opens the Admin Login modal
   const handleLogoClick = () => {
     onSelectCategory('all');
-    setClickCount((prev) => {
-      const next = prev + 1;
-      if (next >= 5) {
-        if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
-        onTriggerAdminLogin();
-        return 0;
-      }
-      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
-      clickTimeoutRef.current = setTimeout(() => {
-        setClickCount(0);
-      }, 3000);
-      return next;
-    });
+    const next = clickCountRef.current + 1;
+    if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+    if (next >= 5) {
+      clickCountRef.current = 0;
+      onTriggerAdminLogin();
+      return;
+    }
+    clickCountRef.current = next;
+    clickTimeoutRef.current = setTimeout(() => {
+      clickCountRef.current = 0;
+    }, 3000);
   };
 
   return (
