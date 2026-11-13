@@ -20,7 +20,7 @@ import { Product, Banner, Category, CartItem, FilterState, Order } from './types
 import { Sparkles, ShoppingBag, Settings } from 'lucide-react';
 import { 
   getSupabaseConfig, 
-  saveSupabaseConfig,
+  hasLocalSupabaseOverride,
   fetchServerSupabaseConfig,
   saveServerSupabaseConfig,
   fetchStorefrontDataFromServer,
@@ -138,27 +138,29 @@ export default function App() {
   }, [recentOrders]);
 
   // Live Sync from Supabase across all connected user devices
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => products.length === 0);
   const isSyncingRef = useRef(false);
   const hasSeededServerConfigRef = useRef(false);
 
   const syncFromSupabase = useCallback(async () => {
     if (isSyncingRef.current) return;
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsInitialLoading(false);
+      return;
+    }
 
     isSyncingRef.current = true;
     try {
       let cfg = getSupabaseConfig();
 
-      // Fetch server-stored Supabase credentials so mobile devices & other browsers auto-connect
+      // Check server config in case Admin overrode Supabase project centrally
       const serverCfg = await fetchServerSupabaseConfig();
-      if (!cfg.url || !cfg.anonKey) {
-        if (serverCfg) {
+      if (!hasLocalSupabaseOverride()) {
+        if (serverCfg && (serverCfg.url !== cfg.url || serverCfg.anonKey !== cfg.anonKey)) {
           cfg = serverCfg;
-          saveSupabaseConfig(serverCfg);
           setSupabaseConfigVersion((v) => v + 1);
         }
-      } else if (!serverCfg && !hasSeededServerConfigRef.current) {
-        // One-time auto-seed: if Admin already entered keys in this browser earlier, share them via server
+      } else if (cfg.url && cfg.anonKey && !serverCfg && !hasSeededServerConfigRef.current) {
         hasSeededServerConfigRef.current = true;
         saveServerSupabaseConfig(cfg.url, cfg.anonKey);
       }
@@ -214,6 +216,7 @@ export default function App() {
       console.warn('Live Supabase sync error:', err);
     } finally {
       isSyncingRef.current = false;
+      setIsInitialLoading(false);
     }
   }, []);
 
@@ -744,34 +747,42 @@ export default function App() {
         </div>
 
         {filteredProducts.length === 0 ? (
-          <div className="py-16 text-center max-w-md mx-auto space-y-3 bg-white p-8 rounded-lg border border-[#E8E8E8]">
-            <div className="w-16 h-16 rounded-full bg-[#FAF8F5] flex items-center justify-center mx-auto text-[#888888]">
-              <ShoppingBag className="w-8 h-8" />
+          isInitialLoading && products.length === 0 ? (
+            <div className="py-16 text-center max-w-md mx-auto space-y-3 bg-white p-8 rounded-lg border border-[#E8E8E8]">
+              <div className="w-12 h-12 rounded-full border-4 border-[#FDE5F4] border-t-[#9F2089] animate-spin mx-auto" />
+              <h3 className="text-base font-bold text-[#222222]">Loading Marhaba Collection...</h3>
+              <p className="text-xs text-[#666666]">Syncing latest creations &amp; banners</p>
             </div>
-            <h3 className="text-lg font-bold text-[#222222]">
-              {products.length === 0 ? 'Catalog Coming Soon' : 'No Products Found'}
-            </h3>
-            <p className="text-xs text-[#666666]">
-              {products.length === 0
-                ? 'Store inventory is currently empty. Add products, banners, and categories from the Admin Panel.'
-                : 'Try adjusting your price or filter selections, or reset filters to see all creations.'}
-            </p>
-            {products.length === 0 ? (
-              <button
-                onClick={handleTriggerAdminLogin}
-                className="px-5 py-2.5 bg-[#9F2089] text-white text-xs font-bold rounded hover:bg-[#80182E] transition-colors"
-              >
-                Open Admin Panel
-              </button>
-            ) : (
-              <button
-                onClick={handleResetFilters}
-                className="px-5 py-2.5 bg-[#9F2089] text-white text-xs font-bold rounded hover:bg-[#80182E] transition-colors"
-              >
-                Reset Filters
-              </button>
-            )}
-          </div>
+          ) : (
+            <div className="py-16 text-center max-w-md mx-auto space-y-3 bg-white p-8 rounded-lg border border-[#E8E8E8]">
+              <div className="w-16 h-16 rounded-full bg-[#FAF8F5] flex items-center justify-center mx-auto text-[#888888]">
+                <ShoppingBag className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-[#222222]">
+                {products.length === 0 ? 'Catalog Coming Soon' : 'No Products Found'}
+              </h3>
+              <p className="text-xs text-[#666666]">
+                {products.length === 0
+                  ? 'Store inventory is currently empty. Add products, banners, and categories from the Admin Panel.'
+                  : 'Try adjusting your price or filter selections, or reset filters to see all creations.'}
+              </p>
+              {products.length === 0 ? (
+                <button
+                  onClick={handleTriggerAdminLogin}
+                  className="px-5 py-2.5 bg-[#9F2089] text-white text-xs font-bold rounded hover:bg-[#80182E] transition-colors"
+                >
+                  Open Admin Panel
+                </button>
+              ) : (
+                <button
+                  onClick={handleResetFilters}
+                  className="px-5 py-2.5 bg-[#9F2089] text-white text-xs font-bold rounded hover:bg-[#80182E] transition-colors"
+                >
+                  Reset Filters
+                </button>
+              )}
+            </div>
+          )
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3 sm:gap-4">
             {filteredProducts.map((product) => (

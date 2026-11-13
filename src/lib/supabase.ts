@@ -1,4 +1,5 @@
 import { Product, Banner, Category, Order, SupabaseConfig } from '../types';
+import { getBuiltInSupabaseDefaults } from './storefrontDefaults';
 
 export const SUPABASE_SQL_SCHEMA = `-- ==============================================================================
 -- MARHABA COLLECTION: COMPLETE PRODUCTION SUPABASE DATABASE SCHEMA & SEED DATA
@@ -177,6 +178,19 @@ END $$;
 
 const SUPABASE_CONFIG_KEY = 'marhaba_supabase_config';
 
+export function hasLocalSupabaseOverride(): boolean {
+  try {
+    const raw = localStorage.getItem(SUPABASE_CONFIG_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return Boolean(parsed && parsed.url && parsed.anonKey);
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return false;
+}
+
 export function getSupabaseConfig(): SupabaseConfig {
   try {
     // Allow storefront share links (?sb_url=...&sb_key=...) to auto-configure user devices
@@ -204,19 +218,28 @@ export function getSupabaseConfig(): SupabaseConfig {
     const raw = localStorage.getItem(SUPABASE_CONFIG_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && (parsed.url || parsed.anonKey)) {
+      if (parsed && parsed.url && parsed.anonKey) {
         return parsed;
       }
     }
   } catch (e) {
     console.error('Error loading Supabase config', e);
   }
-  const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-  const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+  const envUrl = ((import.meta as any).env?.VITE_SUPABASE_URL || '').trim();
+  const envKey = ((import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '').trim();
+  if (envUrl && envKey) {
+    return {
+      url: envUrl,
+      anonKey: envKey,
+      isConnected: true,
+      autoSync: true
+    };
+  }
+  const builtIn = getBuiltInSupabaseDefaults();
   return {
-    url: envUrl,
-    anonKey: envKey,
-    isConnected: Boolean(envUrl && envKey),
+    url: builtIn.url,
+    anonKey: builtIn.anonKey,
+    isConnected: Boolean(builtIn.url && builtIn.anonKey),
     autoSync: true
   };
 }
