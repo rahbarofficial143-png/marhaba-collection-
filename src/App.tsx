@@ -9,7 +9,6 @@ import { CheckoutModal } from './components/CheckoutModal';
 import { ArtisanHubsModal } from './components/ArtisanHubsModal';
 import { OrderTrackingModal } from './components/OrderTrackingModal';
 import { WishlistDrawer } from './components/WishlistDrawer';
-import { Footer } from './components/Footer';
 import { AdminPanel } from './components/AdminPanel';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -779,7 +778,7 @@ export default function App() {
       )}
 
       {/* Main Product Catalog Grid */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 pt-6 pb-10 w-full">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-base sm:text-xl font-bold text-[#222222] tracking-tight">
@@ -838,16 +837,6 @@ export default function App() {
           </div>
         )}
       </main>
-
-      {/* Footer */}
-      <Footer
-        onSelectCategory={handleSelectCategory}
-        onOpenArtisans={() => setIsArtisansOpen(true)}
-        onOpenTracking={() => {
-          setProfileInitialTab('orders');
-          setIsProfileOpen(true);
-        }}
-      />
 
       {/* Product Detail Modal */}
       <ProductDetailModal

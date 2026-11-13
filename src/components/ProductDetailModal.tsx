@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  X, Heart, Star, ShieldCheck, Truck, RotateCcw, Check, Share2, 
-  Store, Copy, Ruler, MessageSquare, ChevronRight, ThumbsUp
+  X, Heart, Star, ShieldCheck, Truck, Check, Share2, 
+  Store, Copy, Ruler, ArrowLeft
 } from 'lucide-react';
 import { Product } from '../types';
 
@@ -24,14 +24,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onAddToCart,
   onBuyNow
 }) => {
-  if (!isOpen || !product) return null;
-
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [selectedSize, setSelectedSize] = useState<string>(
-    product.availableSizes && product.availableSizes.length > 0
-      ? product.availableSizes[0]
-      : 'Free Size'
-  );
+  const [selectedSize, setSelectedSize] = useState<string>('Free Size');
   const [pincode, setPincode] = useState('');
   const [pincodeStatus, setPincodeStatus] = useState<'idle' | 'checking' | 'verified' | 'error'>('idle');
   const [copiedCode, setCopiedCode] = useState(false);
@@ -40,6 +34,22 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [isFollowingSupplier, setIsFollowingSupplier] = useState(false);
   const [addedAnimation, setAddedAnimation] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'reviews'>('details');
+
+  useEffect(() => {
+    if (isOpen && product) {
+      setActiveImageIndex(0);
+      setSelectedSize(
+        product.availableSizes && product.availableSizes.length > 0
+          ? product.availableSizes[0]
+          : 'Free Size'
+      );
+      setActiveTab('details');
+      setShowSizeChart(false);
+      setPincodeStatus('idle');
+    }
+  }, [isOpen, product?.id]);
+
+  if (!isOpen || !product) return null;
 
   const productCode = `s-${product.id.replace('prod-', '')}894`;
 
@@ -78,52 +88,71 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 animate-fadeIn"
+      onClick={onClose}
+    >
       <div
-        className="relative bg-white w-full max-w-5xl rounded-lg shadow-2xl border border-[#E8E8E8] overflow-hidden my-auto max-h-[94vh] flex flex-col text-[#222222]"
+        className="relative bg-white w-full max-w-5xl h-full sm:h-auto sm:max-h-[94vh] rounded-none sm:rounded-lg shadow-2xl border-0 sm:border border-[#E8E8E8] overflow-hidden my-auto flex flex-col text-[#222222]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Product Modal Header */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-[#E8E8E8] bg-[#FAF8F5]">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="font-bold text-[#9F2089] uppercase tracking-wider">
-              {product.supplierName || product.provenanceTag}
-            </span>
-            <span className="text-[#CCCCCC]">·</span>
-            <span className="text-[#666666]">{product.categoryLabel}</span>
+        {/* Product Modal Header — Compact & Phone-Friendly with Clear Back Button */}
+        <div className="flex items-center justify-between gap-2 px-3 sm:px-6 py-2.5 border-b border-[#E8E8E8] bg-[#FAF8F5] shrink-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex items-center gap-1 px-2 py-1 rounded-md bg-white border border-[#DDDDDD] hover:border-[#9F2089] text-[#222222] hover:text-[#9F2089] text-[11px] font-bold shrink-0 transition-colors cursor-pointer"
+              aria-label="Go back"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back</span>
+            </button>
+
+            <div className="min-w-0 flex items-center gap-1.5 text-[11px] sm:text-xs">
+              <span className="font-bold text-[#9F2089] uppercase tracking-wide truncate">
+                {product.supplierName || product.provenanceTag}
+              </span>
+              <span className="hidden sm:inline text-[#CCCCCC] shrink-0">·</span>
+              <span className="hidden sm:inline text-[#666666] truncate">{product.categoryLabel}</span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
+              type="button"
               onClick={handleCopyCode}
-              className="text-[11px] font-semibold text-[#666666] hover:text-[#9F2089] flex items-center gap-1 bg-white border border-[#CCCCCC] px-2 py-1 rounded"
-              title="Copy Marhaba Product Code"
+              className="text-[10px] sm:text-[11px] font-semibold text-[#666666] hover:text-[#9F2089] flex items-center gap-1 bg-white border border-[#CCCCCC] px-2 py-1 rounded whitespace-nowrap cursor-pointer"
+              title={`Copy Marhaba Product Code (${productCode})`}
             >
-              <Copy className="w-3 h-3" />
-              <span>{copiedCode ? 'Code Copied!' : `Code: ${productCode}`}</span>
+              <Copy className="w-3 h-3 shrink-0" />
+              <span className="sm:hidden">{copiedCode ? 'Copied!' : 'Code'}</span>
+              <span className="hidden sm:inline">{copiedCode ? 'Code Copied!' : `Code: ${productCode}`}</span>
             </button>
 
             <button
+              type="button"
               onClick={handleShare}
-              className="text-[11px] font-semibold text-[#666666] hover:text-[#9F2089] flex items-center gap-1 bg-white border border-[#CCCCCC] px-2 py-1 rounded"
+              className="text-[10px] sm:text-[11px] font-semibold text-[#666666] hover:text-[#9F2089] flex items-center gap-1 bg-white border border-[#CCCCCC] px-2 py-1 rounded whitespace-nowrap cursor-pointer"
               title="Share Product"
             >
-              <Share2 className="w-3 h-3" />
-              <span>{copiedLink ? 'Link Copied!' : 'Share'}</span>
+              <Share2 className="w-3 h-3 shrink-0" />
+              <span>{copiedLink ? 'Copied!' : 'Share'}</span>
             </button>
 
             <button
+              type="button"
               onClick={onClose}
-              className="p-1.5 text-[#666666] hover:text-[#222222] rounded-full hover:bg-black/5 transition-colors"
+              className="p-1 text-[#666666] hover:text-[#222222] rounded-full hover:bg-black/5 transition-colors shrink-0 cursor-pointer"
               aria-label="Close modal"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="overflow-y-auto flex-1 p-4 sm:p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+        <div className="overflow-y-auto overflow-x-hidden flex-1 p-3.5 sm:p-6 grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6">
           {/* LEFT COLUMN: Enhanced Gallery & Thumbnails (5 cols) */}
           <div className="md:col-span-5 space-y-3">
             {/* Main Stage Image */}

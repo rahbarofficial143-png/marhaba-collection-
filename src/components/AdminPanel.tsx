@@ -84,6 +84,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [pendingImageUrl, setPendingImageUrl] = useState('');
+  const [customClusters, setCustomClusters] = useState<string[]>(() => {
+    const defaults = ['Varanasi', 'Surat', 'Chanderi', 'Kanchipuram', 'Jaipur', 'Bhagalpur', 'Lucknow', 'Maheshwar'];
+    try {
+      const saved = localStorage.getItem('marhaba_custom_clusters');
+      const parsed = saved ? JSON.parse(saved) : [];
+      const fromProducts = products.map((p) => p.artisanCluster).filter(Boolean);
+      return Array.from(new Set([...defaults, ...(Array.isArray(parsed) ? parsed : []), ...fromProducts]));
+    } catch {
+      return defaults;
+    }
+  });
+  const [isAddingCluster, setIsAddingCluster] = useState(false);
+  const [newClusterInput, setNewClusterInput] = useState('');
+
+  const handleAddCustomCluster = () => {
+    const clean = newClusterInput.trim();
+    if (!clean) return;
+    setCustomClusters((prev) => {
+      const next = prev.some((c) => c.toLowerCase() === clean.toLowerCase()) ? prev : [...prev, clean];
+      try {
+        localStorage.setItem('marhaba_custom_clusters', JSON.stringify(next));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+    const matchedExisting = customClusters.find((c) => c.toLowerCase() === clean.toLowerCase()) || clean;
+    setProductForm((prev) => ({
+      ...prev,
+      artisanCluster: matchedExisting,
+      provenanceTag: `${matchedExisting.toUpperCase()} WEAVERS`
+    }));
+    setNewClusterInput('');
+    setIsAddingCluster(false);
+    showToast(`Weaving Cluster "${matchedExisting}" added & selected!`);
+  };
   const [productForm, setProductForm] = useState({
     title: '',
     category: 'sarees',
@@ -1770,32 +1806,75 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-[#222222] mb-1">Weaving Cluster *</label>
-                  <select
-                    value={productForm.artisanCluster}
-                    onChange={(e) => {
-                      const cluster = e.target.value;
-                      const tagMap: Record<string, string> = {
-                        Varanasi: 'VARANASI WEAVERS',
-                        Surat: 'SURAT DIRECT',
-                        Chanderi: 'CHANDERI CLUSTER',
-                        Kanchipuram: 'KANCHIPURAM WEAVE',
-                        Jaipur: 'JAIPUR BLOCKPRINT'
-                      };
-                      setProductForm({
-                        ...productForm,
-                        artisanCluster: cluster,
-                        provenanceTag: tagMap[cluster] || `${cluster.toUpperCase()} GUILD`
-                      });
-                    }}
-                    className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none bg-white font-medium"
-                  >
-                    <option value="Varanasi">Varanasi</option>
-                    <option value="Surat">Surat</option>
-                    <option value="Chanderi">Chanderi</option>
-                    <option value="Kanchipuram">Kanchipuram</option>
-                    <option value="Jaipur">Jaipur</option>
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-[#222222]">Weaving Cluster *</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingCluster((prev) => !prev)}
+                      className="text-[10px] font-bold text-[#9F2089] hover:underline flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isAddingCluster ? 'Cancel' : 'Add Custom'}</span>
+                    </button>
+                  </div>
+
+                  {isAddingCluster ? (
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={newClusterInput}
+                        onChange={(e) => setNewClusterInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddCustomCluster();
+                          }
+                        }}
+                        placeholder="e.g. Kishanganj / Murshidabad"
+                        className="flex-1 min-w-0 px-2.5 py-2 border border-[#9F2089] rounded focus:outline-none text-xs"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddCustomCluster}
+                        className="px-2.5 py-2 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold rounded text-xs shrink-0 cursor-pointer"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      value={productForm.artisanCluster}
+                      onChange={(e) => {
+                        const cluster = e.target.value;
+                        if (cluster === '__add_new__') {
+                          setIsAddingCluster(true);
+                          return;
+                        }
+                        const tagMap: Record<string, string> = {
+                          Varanasi: 'VARANASI WEAVERS',
+                          Surat: 'SURAT DIRECT',
+                          Chanderi: 'CHANDERI CLUSTER',
+                          Kanchipuram: 'KANCHIPURAM WEAVE',
+                          Jaipur: 'JAIPUR BLOCKPRINT'
+                        };
+                        setProductForm({
+                          ...productForm,
+                          artisanCluster: cluster,
+                          provenanceTag: tagMap[cluster] || `${cluster.toUpperCase()} WEAVERS`
+                        });
+                      }}
+                      className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none bg-white font-medium"
+                    >
+                      {!customClusters.includes(productForm.artisanCluster) && productForm.artisanCluster && (
+                        <option value={productForm.artisanCluster}>{productForm.artisanCluster}</option>
+                      )}
+                      {customClusters.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                      <option value="__add_new__">+ Add New Weaving Cluster...</option>
+                    </select>
+                  )}
                 </div>
 
                 <div>

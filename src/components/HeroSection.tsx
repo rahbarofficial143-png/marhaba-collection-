@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ShieldCheck, Truck, RotateCcw, BadgePercent } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Truck, RotateCcw, MoreVertical } from 'lucide-react';
 import { Banner, Category } from '../types';
 
 interface HeroSectionProps {
@@ -17,6 +17,8 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 }) => {
   const activeBanners = banners.filter((b) => b.active);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [isPolicyMenuOpen, setIsPolicyMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Auto rotate banners every 5 seconds
   useEffect(() => {
@@ -27,6 +29,18 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     return () => clearInterval(interval);
   }, [activeBanners.length]);
 
+  // Close 3-dot menu on outside click
+  useEffect(() => {
+    if (!isPolicyMenuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsPolicyMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [isPolicyMenuOpen]);
+
   // Use dynamic categories from admin (exclude 'all', only show bubbles with uploaded image)
   const categoryBubbles = categories
     .filter((c) => c.id !== 'all' && Boolean(c.imageUrl))
@@ -36,15 +50,15 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
   return (
     <div className="bg-white border-b border-[#E8E8E8]">
-      {/* Category Circles Rail (shown once admin adds category images) */}
-      {categoryBubbles.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 py-3 sm:py-4 border-b border-[#F0F0F0]">
-          <div className="flex items-center justify-between sm:justify-center gap-4 sm:gap-8 overflow-x-auto scrollbar-none">
+      {/* Dynamic Category Circles Rail + Right-Side Three-Dot Policies Dropdown (Above Banners) */}
+      <div className="max-w-7xl mx-auto px-4 py-2.5 sm:py-3.5 border-b border-[#F0F0F0] flex items-center justify-between gap-2">
+        {categoryBubbles.length > 0 ? (
+          <div className="flex-1 flex items-center justify-start sm:justify-center gap-4 sm:gap-8 overflow-x-auto scrollbar-none">
             {categoryBubbles.map((bubble) => (
               <button
                 key={bubble.id}
                 onClick={() => onExploreCategory(bubble.id)}
-                className="flex flex-col items-center group shrink-0 focus:outline-none"
+                className="flex flex-col items-center group shrink-0 focus:outline-none cursor-pointer"
               >
                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-transparent group-hover:border-[#9F2089] p-0.5 transition-all shadow-xs bg-[#FAF8F5]">
                   <img
@@ -60,13 +74,50 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               </button>
             ))}
           </div>
+        ) : (
+          <div className="flex-1 text-xs font-semibold text-[#666666]">
+            Marhaba Collection Highlights
+          </div>
+        )}
+
+        {/* Right-Side Three-Dot Menu for Free Delivery Pan-India & 7-Day Easy Returns */}
+        <div className="relative shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setIsPolicyMenuOpen((prev) => !prev)}
+            className="p-2 rounded-full bg-[#FAF8F5] hover:bg-[#FDE5F4] border border-[#E8E8E8] text-[#444444] hover:text-[#9F2089] transition-colors cursor-pointer flex items-center justify-center"
+            aria-label="Delivery and Return Info"
+            title="Delivery & Return Policies"
+          >
+            <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+
+          {isPolicyMenuOpen && (
+            <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-[#E8E8E8] p-2.5 space-y-2 z-50 animate-fadeIn">
+              <div className="flex items-center gap-2.5 p-2.5 bg-[#FAF8F5] rounded-lg border border-[#EFEAE2]">
+                <Truck className="w-5 h-5 text-[#038D63] shrink-0" />
+                <div>
+                  <div className="text-xs font-bold text-[#222222]">Free Delivery Pan-India</div>
+                  <div className="text-[11px] text-[#666666]">Orders above ₹999</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 p-2.5 bg-[#FAF8F5] rounded-lg border border-[#EFEAE2]">
+                <RotateCcw className="w-5 h-5 text-[#80182E] shrink-0" />
+                <div>
+                  <div className="text-xs font-bold text-[#222222]">7-Day Easy Returns</div>
+                  <div className="text-[11px] text-[#666666]">100% Instant Refund</div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Hero Carousel Banner & Trust Strip */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
         {current && (
-          <div className="relative rounded-xl overflow-hidden shadow-sm bg-gradient-to-r from-[#9F2089] to-[#80182E] text-white mb-4">
+          <div className="relative rounded-xl overflow-hidden shadow-sm bg-gradient-to-r from-[#9F2089] to-[#80182E] text-white">
             <div className="grid grid-cols-1 md:grid-cols-12 min-h-[220px] sm:min-h-[280px] items-center">
               {/* Left Content */}
               <div className="md:col-span-7 p-6 sm:p-10 space-y-3 z-10">
@@ -153,41 +204,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             )}
           </div>
         )}
-
-        {/* 4-Pillar Trust Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs text-[#444444]">
-          <div className="flex items-center gap-2.5 p-2 bg-[#FAF8F5] rounded border border-[#E8E8E8]">
-            <BadgePercent className="w-5 h-5 text-[#9F2089] shrink-0" />
-            <div>
-              <div className="font-bold text-[#222222]">Wholesale Loom Pricing</div>
-              <div className="text-[10px] text-[#777777]">No intermediate store markup</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 p-2 bg-[#FAF8F5] rounded border border-[#E8E8E8]">
-            <Truck className="w-5 h-5 text-[#038D63] shrink-0" />
-            <div>
-              <div className="font-bold text-[#222222]">Free Delivery Pan-India</div>
-              <div className="text-[10px] text-[#777777]">Orders above ₹999</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 p-2 bg-[#FAF8F5] rounded border border-[#E8E8E8]">
-            <ShieldCheck className="w-5 h-5 text-[#C59B27] shrink-0" />
-            <div>
-              <div className="font-bold text-[#222222]">PhonePe / UPI: 9334808340</div>
-              <div className="text-[10px] text-[#777777]">Direct 1-click verification</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 p-2 bg-[#FAF8F5] rounded border border-[#E8E8E8]">
-            <RotateCcw className="w-5 h-5 text-[#80182E] shrink-0" />
-            <div>
-              <div className="font-bold text-[#222222]">7-Day Easy Returns</div>
-              <div className="text-[10px] text-[#777777]">100% Instant Refund</div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
