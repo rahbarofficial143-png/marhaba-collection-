@@ -9,6 +9,7 @@ import { CheckoutModal } from './components/CheckoutModal';
 import { ArtisanHubsModal } from './components/ArtisanHubsModal';
 import { OrderTrackingModal } from './components/OrderTrackingModal';
 import { WishlistDrawer } from './components/WishlistDrawer';
+import { Footer } from './components/Footer';
 import { AdminPanel } from './components/AdminPanel';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -837,6 +838,16 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Footer (Marhaba Collection About, Gmail, Phone, Kishanganj Bihar 855108 Address) */}
+      <Footer
+        onSelectCategory={handleSelectCategory}
+        onOpenArtisans={() => setIsArtisansOpen(true)}
+        onOpenTracking={() => {
+          setProfileInitialTab('orders');
+          setIsProfileOpen(true);
+        }}
+      />
 
       {/* Product Detail Modal */}
       <ProductDetailModal

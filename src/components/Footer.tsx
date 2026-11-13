@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Award, Heart, Mail, Phone, MapPin, Store } from 'lucide-react';
+import { Mail, Phone, MapPin } from 'lucide-react';
 
 interface FooterProps {
   onSelectCategory: (catId: string) => void;
@@ -13,48 +13,7 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenTracking
 }) => {
   return (
-    <footer className="bg-white border-t border-[#E8E8E8] text-[#222222] mt-12">
-      {/* Upper Certifications Strip */}
-      <div className="border-b border-[#E8E8E8] py-6 bg-[#FAF8F5]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 sm:grid-cols-3 gap-6 text-center sm:text-left">
-          <div className="flex items-center justify-center sm:justify-start gap-3">
-            <Award className="w-8 h-8 text-[#C59B27] shrink-0" />
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-[#222222]">
-                100% Genuine Silk Mark Certified
-              </div>
-              <div className="text-[11px] text-[#666666]">
-                Pure handloom fabrics direct from certified weaver guilds in Varanasi, Surat & Chanderi.
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center sm:justify-start gap-3">
-            <ShieldCheck className="w-8 h-8 text-[#9F2089] shrink-0" />
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-[#222222]">
-                Lowest Price Direct From Loom
-              </div>
-              <div className="text-[11px] text-[#666666]">
-                Zero intermediate boutique margins. 100% honest wholesale price passed directly to you.
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center sm:justify-start gap-3">
-            <Heart className="w-8 h-8 text-[#038D63] shrink-0" />
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-[#222222]">
-                7-Day Easy Returns & Free Delivery
-              </div>
-              <div className="text-[11px] text-[#666666]">
-                Open-box doorstep inspection with 100% instant refund guarantee on all orders.
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <footer className="bg-white border-t border-[#E8E8E8] text-[#222222] mt-10">
       {/* Main Footer Links */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 md:grid-cols-12 gap-8">
         {/* Brand Column */}
