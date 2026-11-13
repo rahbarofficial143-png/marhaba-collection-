@@ -9,6 +9,7 @@ interface ImageColorPickerProps {
   selectedHex: string;
   onChangeColor: (colorName: string, colorHex: string) => void;
   allowMultiple?: boolean;
+  onPendingUrlChange?: (url: string) => void;
 }
 
 // Preset popular Indian ethnic attire colors
@@ -31,14 +32,15 @@ export const ImageColorPicker: React.FC<ImageColorPickerProps> = ({
   selectedColor,
   selectedHex,
   onChangeColor,
-  allowMultiple = true
+  allowMultiple = true,
+  onPendingUrlChange
 }) => {
   const [isEyedropperActive, setIsEyedropperActive] = useState(false);
   const [hoverHex, setHoverHex] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [extractedPalette, setExtractedPalette] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState('');
-  const [showUrlField, setShowUrlField] = useState(false);
+  const [showUrlField, setShowUrlField] = useState(true);
   const [isCompressing, setIsCompressing] = useState(false);
   const [compressionNotice, setCompressionNotice] = useState<string | null>(null);
 
@@ -161,7 +163,7 @@ export const ImageColorPicker: React.FC<ImageColorPickerProps> = ({
       onChangeImages([trimmed]);
     }
     setUrlInput('');
-    setShowUrlField(false);
+    onPendingUrlChange?.('');
     setCompressionNotice(`⚡ URL added (${getImageSizeKb(trimmed)} KB) — Minimal Supabase payload!`);
     setTimeout(() => setCompressionNotice(null), 4000);
   };
@@ -310,21 +312,30 @@ export const ImageColorPicker: React.FC<ImageColorPickerProps> = ({
           </div>
         )}
 
-        {/* Optional Manual URL Input */}
+        {/* Direct Image URL Input (Always visible & auto-captured on save) */}
         {showUrlField && (
           <div className="mt-2 space-y-1.5 p-2.5 bg-white border border-[#E0E0E0] rounded">
             <div className="flex gap-2">
               <input
                 type="url"
                 value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                placeholder="Paste image link here (e.g. https://example.com/photo.jpg)"
+                onChange={(e) => {
+                  setUrlInput(e.target.value);
+                  onPendingUrlChange?.(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddUrl();
+                  }
+                }}
+                placeholder="Paste image URL here (e.g. https://example.com/photo.jpg)"
                 className="flex-1 px-3 py-1.5 text-xs border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none font-mono"
               />
               <button
                 type="button"
                 onClick={handleAddUrl}
-                className="px-3.5 py-1.5 bg-[#9F2089] text-white text-xs font-bold rounded hover:bg-[#80182E] transition-colors"
+                className="px-3.5 py-1.5 bg-[#9F2089] text-white text-xs font-bold rounded hover:bg-[#80182E] transition-colors cursor-pointer"
               >
                 Add URL
               </button>

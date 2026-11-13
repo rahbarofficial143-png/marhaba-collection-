@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   Plus, Edit, Trash2, ArrowLeft, Image as ImageIcon, Package, 
   ShoppingBag, Check, X, RefreshCw, FolderTree, Database, 
-  Copy, ExternalLink, ShieldCheck, CheckCircle2, AlertCircle, Zap, Upload, LogOut, User
+  Copy, ExternalLink, ShieldCheck, CheckCircle2, AlertCircle, Zap, Upload, LogOut, User,
+  Eye, EyeOff, KeyRound, Link2
 } from 'lucide-react';
 import { Product, Banner, Order, Category, SupabaseConfig } from '../types';
 import { ImageColorPicker } from './ImageColorPicker';
@@ -10,6 +11,9 @@ import {
   SUPABASE_SQL_SCHEMA, 
   getSupabaseConfig, 
   saveSupabaseConfig, 
+  clearSupabaseConfig,
+  cleanSupabaseUrl,
+  getLastSupabaseError,
   testSupabaseConnection,
   saveProductToSupabase,
   deleteProductFromSupabase,
@@ -66,13 +70,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onClose,
   onLogout
 }) => {
-  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'banners' | 'orders' | 'supabase'>('products');
+  const initialSupabaseCfg = getSupabaseConfig();
+  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'banners' | 'orders' | 'supabase'>(
+    initialSupabaseCfg.url && initialSupabaseCfg.anonKey ? 'products' : 'supabase'
+  );
   const [searchProductQuery, setSearchProductQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
 
   // Product Add/Edit Modal State
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [pendingImageUrl, setPendingImageUrl] = useState('');
   const [productForm, setProductForm] = useState({
     title: '',
     category: 'sarees',
@@ -124,7 +132,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   });
 
   // Supabase Configuration State
-  const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>(getSupabaseConfig());
+  const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>(initialSupabaseCfg);
+  const [showAnonKey, setShowAnonKey] = useState(false);
   const [supabaseTesting, setSupabaseTesting] = useState(false);
   const [supabaseTestResult, setSupabaseTestResult] = useState<string | null>(null);
   const [testErrorMessage, setTestErrorMessage] = useState<string | null>(null);
@@ -144,11 +153,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToastMessage({ text, type });
-    setTimeout(() => setToastMessage(null), 4000);
+    setTimeout(() => setToastMessage(null), 5000);
   };
 
-  const getActiveCfg = () => {
-    if (supabaseConfig.url && supabaseConfig.anonKey) return supabaseConfig;
+  const getActiveCfg = (): SupabaseConfig => {
+    if (supabaseConfig.url.trim() && supabaseConfig.anonKey.trim()) {
+      const normalized: SupabaseConfig = {
+        ...supabaseConfig,
+        url: cleanSupabaseUrl(supabaseConfig.url),
+        anonKey: supabaseConfig.anonKey.trim(),
+        autoSync: true
+      };
+      saveSupabaseConfig(normalized);
+      return normalized;
+    }
     return getSupabaseConfig();
   };
 
@@ -167,6 +185,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // ==========================================
   const handleOpenEditProduct = (p: Product) => {
     setEditingProduct(p);
+    setPendingImageUrl('');
     setProductForm({
       title: p.title,
       category: p.category,
@@ -197,6 +216,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleOpenAddProduct = () => {
     setEditingProduct(null);
+    setPendingImageUrl('');
     setProductForm({
       title: '',
       category: categories[1]?.id || 'sarees',
@@ -234,7 +254,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const targetCategory = categories.find((c) => c.id === productForm.category);
     const categoryLabel = targetCategory ? targetCategory.label : productForm.categoryLabel;
 
-    const finalImages = productForm.images;
+    const trimmedPending = pendingImageUrl.trim();
+    const finalImages = trimmedPending && !productForm.images.includes(trimmedPending)
+      ? [...productForm.images, trimmedPending]
+      : productForm.images;
 
     if (editingProduct) {
       const updated: Product = {
@@ -267,8 +290,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const cfg = getActiveCfg();
       if (cfg.url && cfg.anonKey) {
         saveProductToSupabase(updated, cfg).then((ok) => {
+          const errDetail = getLastSupabaseError();
           showToast(
-            ok ? 'Product updated in Supabase!' : 'Updated locally, but Supabase sync failed.',
+            ok ? 'Product updated in Supabase!' : `Updated locally, Supabase error: ${errDetail || 'Sync failed'}`,
             ok ? 'success' : 'error'
           );
         });
@@ -313,8 +337,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const cfg = getActiveCfg();
       if (cfg.url && cfg.anonKey) {
         saveProductToSupabase(newProd, cfg).then((ok) => {
+          const errDetail = getLastSupabaseError();
           showToast(
-            ok ? 'New product saved to Supabase!' : 'Added locally, but Supabase save failed.',
+            ok ? 'New product saved to Supabase!' : `Added locally, Supabase error: ${errDetail || 'Save failed'}`,
             ok ? 'success' : 'error'
           );
         });
@@ -322,6 +347,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         showToast('Product added locally! Connect Supabase tab for cloud save.', 'info');
       }
     }
+    setPendingImageUrl('');
     setIsProductModalOpen(false);
   };
 
@@ -330,8 +356,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const cfg = getActiveCfg();
     if (cfg.url && cfg.anonKey) {
       deleteProductFromSupabase(productId, cfg).then((ok) => {
+        const errDetail = getLastSupabaseError();
         showToast(
-          ok ? 'Product deleted from store & Supabase!' : 'Deleted locally, but Supabase delete failed.',
+          ok ? 'Product deleted from store & Supabase!' : `Deleted locally, Supabase error: ${errDetail || 'Delete failed'}`,
           ok ? 'success' : 'error'
         );
       });
@@ -374,15 +401,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         ...editingCategory,
         label: categoryForm.label,
         slug,
-        imageUrl: categoryForm.imageUrl,
+        imageUrl: categoryForm.imageUrl.trim(),
         description: categoryForm.description
       };
       onUpdateCategory(updated);
       const cfg = getActiveCfg();
       if (cfg.url && cfg.anonKey) {
         saveCategoryToSupabase(updated, cfg).then((ok) => {
+          const errDetail = getLastSupabaseError();
           showToast(
-            ok ? 'Category updated in Supabase!' : 'Updated locally, but Supabase sync failed.',
+            ok ? 'Category updated in Supabase!' : `Updated locally, Supabase error: ${errDetail || 'Sync failed'}`,
             ok ? 'success' : 'error'
           );
         });
@@ -394,7 +422,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         id: slug || `cat-${Date.now()}`,
         label: categoryForm.label,
         slug,
-        imageUrl: categoryForm.imageUrl,
+        imageUrl: categoryForm.imageUrl.trim(),
         description: categoryForm.description,
         itemCount: 0
       };
@@ -402,8 +430,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const cfg = getActiveCfg();
       if (cfg.url && cfg.anonKey) {
         saveCategoryToSupabase(newCat, cfg).then((ok) => {
+          const errDetail = getLastSupabaseError();
           showToast(
-            ok ? 'Category saved to Supabase!' : 'Added locally, but Supabase save failed.',
+            ok ? 'Category saved to Supabase!' : `Added locally, Supabase error: ${errDetail || 'Save failed'}`,
             ok ? 'success' : 'error'
           );
         });
@@ -419,8 +448,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const cfg = getActiveCfg();
     if (cfg.url && cfg.anonKey) {
       deleteCategoryFromSupabase(categoryId, cfg).then((ok) => {
+        const errDetail = getLastSupabaseError();
         showToast(
-          ok ? 'Category deleted from store & Supabase!' : 'Deleted locally, but Supabase delete failed.',
+          ok ? 'Category deleted from store & Supabase!' : `Deleted locally, Supabase error: ${errDetail || 'Delete failed'}`,
           ok ? 'success' : 'error'
         );
       });
@@ -464,18 +494,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleSaveBanner = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bannerForm.imageUrl.trim()) {
+    const cleanBannerUrl = bannerForm.imageUrl.trim();
+    if (!cleanBannerUrl) {
       showToast('Please upload a banner image or paste an image URL.', 'error');
       return;
     }
     if (editingBanner) {
-      const updated = { ...editingBanner, ...bannerForm };
+      const updated = { ...editingBanner, ...bannerForm, imageUrl: cleanBannerUrl };
       onUpdateBanner(updated);
       const cfg = getActiveCfg();
       if (cfg.url && cfg.anonKey) {
         saveBannerToSupabase(updated, cfg).then((ok) => {
+          const errDetail = getLastSupabaseError();
           showToast(
-            ok ? 'Banner updated in Supabase!' : 'Updated locally, but Supabase sync failed.',
+            ok ? 'Banner updated in Supabase!' : `Updated locally, Supabase error: ${errDetail || 'Sync failed'}`,
             ok ? 'success' : 'error'
           );
         });
@@ -483,13 +515,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         showToast('Banner updated locally!');
       }
     } else {
-      const newBanner = { id: `banner-${Date.now()}`, ...bannerForm };
+      const newBanner = { id: `banner-${Date.now()}`, ...bannerForm, imageUrl: cleanBannerUrl };
       onAddBanner(newBanner);
       const cfg = getActiveCfg();
       if (cfg.url && cfg.anonKey) {
         saveBannerToSupabase(newBanner, cfg).then((ok) => {
+          const errDetail = getLastSupabaseError();
           showToast(
-            ok ? 'Banner saved to Supabase!' : 'Added locally, but Supabase save failed.',
+            ok ? 'Banner saved to Supabase!' : `Added locally, Supabase error: ${errDetail || 'Save failed'}`,
             ok ? 'success' : 'error'
           );
         });
@@ -505,8 +538,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const cfg = getActiveCfg();
     if (cfg.url && cfg.anonKey) {
       deleteBannerFromSupabase(bannerId, cfg).then((ok) => {
+        const errDetail = getLastSupabaseError();
         showToast(
-          ok ? 'Banner deleted from store & Supabase!' : 'Deleted locally, but Supabase delete failed.',
+          ok ? 'Banner deleted from store & Supabase!' : `Deleted locally, Supabase error: ${errDetail || 'Delete failed'}`,
           ok ? 'success' : 'error'
         );
       });
@@ -540,33 +574,94 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // ==========================================
   // SUPABASE CONNECT & TEST & MASTER SYNC
   // ==========================================
+  const handleSaveSupabaseOnly = () => {
+    const trimmedUrl = cleanSupabaseUrl(supabaseConfig.url);
+    const trimmedKey = supabaseConfig.anonKey.trim();
+    if (!trimmedUrl || !trimmedKey) {
+      showToast('Please enter both Supabase URL and Anon Key.', 'error');
+      return;
+    }
+    const updated: SupabaseConfig = {
+      ...supabaseConfig,
+      url: trimmedUrl,
+      anonKey: trimmedKey,
+      isConnected: true,
+      autoSync: true,
+      lastSyncedAt: new Date().toISOString()
+    };
+    setSupabaseConfig(updated);
+    saveSupabaseConfig(updated);
+    setSupabaseTestResult(null);
+    setTestErrorMessage(null);
+    showToast('Supabase URL & Anon Key saved! Syncing live data...');
+    if (onRefreshFromSupabase) {
+      onRefreshFromSupabase();
+    }
+    window.dispatchEvent(new Event('marhaba-supabase-config-updated'));
+  };
+
   const handleTestSupabase = async () => {
+    const trimmedUrl = cleanSupabaseUrl(supabaseConfig.url);
+    const trimmedKey = supabaseConfig.anonKey.trim();
+    if (!trimmedUrl || !trimmedKey) {
+      showToast('Please enter both Supabase URL and Anon Key.', 'error');
+      return;
+    }
     setSupabaseTesting(true);
     setSupabaseTestResult(null);
     setTestErrorMessage(null);
 
-    const res = await testSupabaseConnection(supabaseConfig.url, supabaseConfig.anonKey);
+    const res = await testSupabaseConnection(trimmedUrl, trimmedKey);
     setSupabaseTesting(false);
 
+    // Always persist the trimmed URL & Key in localStorage so they are never lost
+    const savedCfg: SupabaseConfig = {
+      ...supabaseConfig,
+      url: trimmedUrl,
+      anonKey: trimmedKey,
+      isConnected: res.success,
+      autoSync: true,
+      lastSyncedAt: res.success ? new Date().toISOString() : supabaseConfig.lastSyncedAt
+    };
+    setSupabaseConfig(savedCfg);
+    saveSupabaseConfig(savedCfg);
+    window.dispatchEvent(new Event('marhaba-supabase-config-updated'));
+
     if (res.success) {
-      const updated = { ...supabaseConfig, isConnected: true };
-      setSupabaseConfig(updated);
-      saveSupabaseConfig(updated);
       setSupabaseTestResult('success');
-      showToast('Connected to Supabase! Table Editor is ready.');
+      showToast('Connected & Saved to Supabase! Table Editor is ready.');
+      if (onRefreshFromSupabase) {
+        onRefreshFromSupabase();
+      }
     } else {
       setSupabaseTestResult('error');
       setTestErrorMessage(res.message);
+      showToast('URL & Key saved locally, lekin Supabase check mein error aaya — neeche message dekhein.', 'error');
     }
   };
 
+  const handleClearSupabase = () => {
+    clearSupabaseConfig();
+    const emptyCfg: SupabaseConfig = { url: '', anonKey: '', isConnected: false, autoSync: true };
+    setSupabaseConfig(emptyCfg);
+    setSupabaseTestResult(null);
+    setTestErrorMessage(null);
+    setSyncResult(null);
+    showToast('Supabase credentials cleared.', 'info');
+    window.dispatchEvent(new Event('marhaba-supabase-config-updated'));
+  };
+
   const handleSyncAllToSupabase = async () => {
+    const cfg = getActiveCfg();
     setSyncingAll(true);
     setSyncResult(null);
-    const res = await batchSyncAllToSupabase(categories, products, banners, orders, supabaseConfig);
+    const res = await batchSyncAllToSupabase(categories, products, banners, orders, cfg);
     setSyncingAll(false);
     setSyncResult(res);
     if (res.success) {
+      const connectedCfg: SupabaseConfig = { ...cfg, isConnected: true, lastSyncedAt: new Date().toISOString() };
+      setSupabaseConfig(connectedCfg);
+      saveSupabaseConfig(connectedCfg);
       showToast('Synchronized all data to Supabase Table Editor!');
     }
   };
@@ -623,6 +718,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <User className="w-3.5 h-3.5 text-[#FECE57]" />
               <span>Owner: RAHBAR786</span>
             </span>
+
+            <button
+              onClick={() => setActiveTab('supabase')}
+              className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded font-bold transition-colors border border-white/20"
+              title="Enter or edit Supabase URL & Anon Key"
+            >
+              <Database className="w-3.5 h-3.5 text-[#3ECF8E]" />
+              <span className="hidden sm:inline">
+                {supabaseConfig.url && supabaseConfig.anonKey ? 'Supabase Keys' : 'Connect Supabase'}
+              </span>
+            </button>
 
             {onRefreshFromSupabase && (
               <button
@@ -774,6 +880,82 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* Main Admin Body */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        {/* Quick 2-Column Supabase URL & Anon Key Bar on other tabs when not yet configured */}
+        {activeTab !== 'supabase' && (!supabaseConfig.url || !supabaseConfig.anonKey) && (
+          <div className="mb-5 bg-white p-4 rounded-lg border-2 border-[#3ECF8E] shadow-xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-[#3ECF8E]" />
+                <h3 className="font-bold text-xs sm:text-sm text-[#222222]">
+                  Supabase URL &amp; Anon Key Enter Karein (Live Cloud Sync)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('supabase')}
+                className="text-[11px] font-bold text-[#9F2089] hover:underline"
+              >
+                Full Setup &amp; SQL Schema →
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-[#222222] mb-1">
+                  Column 1: Supabase Project URL
+                </label>
+                <input
+                  type="url"
+                  value={supabaseConfig.url}
+                  onChange={(e) => setSupabaseConfig({ ...supabaseConfig, url: e.target.value })}
+                  placeholder="https://your-project-ref.supabase.co"
+                  className="w-full px-3 py-2 text-xs border border-[#CCCCCC] rounded focus:border-[#3ECF8E] focus:outline-none font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-[#222222] mb-1">
+                  Column 2: Supabase Anon Key
+                </label>
+                <div className="relative">
+                  <input
+                    type={showAnonKey ? 'text' : 'password'}
+                    value={supabaseConfig.anonKey}
+                    onChange={(e) => setSupabaseConfig({ ...supabaseConfig, anonKey: e.target.value })}
+                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    className="w-full pl-3 pr-9 py-2 text-xs border border-[#CCCCCC] rounded focus:border-[#3ECF8E] focus:outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAnonKey(!showAnonKey)}
+                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-[#666666] hover:text-[#222222]"
+                    title={showAnonKey ? 'Hide Anon Key' : 'Show Anon Key'}
+                  >
+                    {showAnonKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleTestSupabase}
+                disabled={supabaseTesting || !supabaseConfig.url.trim() || !supabaseConfig.anonKey.trim()}
+                className="px-4 py-1.5 bg-[#3ECF8E] hover:bg-[#2EB875] text-[#111C2D] font-bold text-xs rounded transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                {supabaseTesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                <span>Test &amp; Save Connection</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSupabaseOnly}
+                disabled={!supabaseConfig.url.trim() || !supabaseConfig.anonKey.trim()}
+                className="px-3.5 py-1.5 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold text-xs rounded transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Save Keys
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ============================================================ */}
         {/* TAB 1: PRODUCTS (with Dropzone & Photoshop Eyedropper)       */}
         {/* ============================================================ */}
@@ -1273,37 +1455,49 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </a>
               </div>
 
-              {/* API Credentials Input Form */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-[#E8E8E8]">
-                <div>
-                  <label className="block text-xs font-bold text-[#222222] mb-1">
-                    Supabase Project URL
+              {/* API Credentials Input Form (Two Columns: Supabase URL & Anon Key) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-[#E8E8E8]">
+                <div className="bg-[#FAF8F5] p-3.5 rounded-lg border border-[#E8E8E8]">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-[#222222] mb-1.5">
+                    <Link2 className="w-3.5 h-3.5 text-[#3ECF8E]" />
+                    <span>Column 1: Supabase Project URL *</span>
                   </label>
                   <input
                     type="url"
                     value={supabaseConfig.url}
                     onChange={(e) => setSupabaseConfig({ ...supabaseConfig, url: e.target.value })}
                     placeholder="https://your-project-ref.supabase.co"
-                    className="w-full px-3 py-2 text-xs border border-[#CCCCCC] rounded focus:border-[#3ECF8E] focus:outline-none font-mono"
+                    className="w-full px-3 py-2.5 text-xs bg-white border border-[#CCCCCC] rounded focus:border-[#3ECF8E] focus:ring-1 focus:ring-[#3ECF8E] focus:outline-none font-mono"
                   />
-                  <span className="text-[10px] text-[#888888] mt-0.5 block">
-                    Found in Supabase Project Settings ➔ API ➔ Project URL
+                  <span className="text-[10px] text-[#777777] mt-1 block">
+                    Supabase Dashboard ➔ Project Settings ➔ Data API / API ➔ Project URL
                   </span>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-[#222222] mb-1">
-                    Supabase Anon Public API Key
+                <div className="bg-[#FAF8F5] p-3.5 rounded-lg border border-[#E8E8E8]">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-[#222222] mb-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-[#9F2089]" />
+                    <span>Column 2: Supabase Anon Public Key *</span>
                   </label>
-                  <input
-                    type="password"
-                    value={supabaseConfig.anonKey}
-                    onChange={(e) => setSupabaseConfig({ ...supabaseConfig, anonKey: e.target.value })}
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    className="w-full px-3 py-2 text-xs border border-[#CCCCCC] rounded focus:border-[#3ECF8E] focus:outline-none font-mono"
-                  />
-                  <span className="text-[10px] text-[#888888] mt-0.5 block">
-                    Found in Supabase Project Settings ➔ API ➔ Project API keys (anon public)
+                  <div className="relative">
+                    <input
+                      type={showAnonKey ? 'text' : 'password'}
+                      value={supabaseConfig.anonKey}
+                      onChange={(e) => setSupabaseConfig({ ...supabaseConfig, anonKey: e.target.value })}
+                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      className="w-full pl-3 pr-10 py-2.5 text-xs bg-white border border-[#CCCCCC] rounded focus:border-[#3ECF8E] focus:ring-1 focus:ring-[#3ECF8E] focus:outline-none font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAnonKey(!showAnonKey)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-[#666666] hover:text-[#222222] cursor-pointer"
+                      title={showAnonKey ? 'Hide Anon Key' : 'Show Anon Key'}
+                    >
+                      {showAnonKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-[#777777] mt-1 block">
+                    Supabase Dashboard ➔ Project Settings ➔ API Keys ➔ anon public key
                   </span>
                 </div>
               </div>
@@ -1312,21 +1506,43 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleTestSupabase}
-                    disabled={supabaseTesting || !supabaseConfig.url || !supabaseConfig.anonKey}
-                    className="px-4 py-2 bg-[#3ECF8E] hover:bg-[#2EB875] text-[#111C2D] font-bold text-xs rounded transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-2xs"
+                    disabled={supabaseTesting || !supabaseConfig.url.trim() || !supabaseConfig.anonKey.trim()}
+                    className="px-4 py-2 bg-[#3ECF8E] hover:bg-[#2EB875] text-[#111C2D] font-bold text-xs rounded transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-2xs cursor-pointer"
                   >
                     {supabaseTesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    <span>Test & Save Supabase Connection</span>
+                    <span>Test &amp; Save Supabase Connection</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveSupabaseOnly}
+                    disabled={!supabaseConfig.url.trim() || !supabaseConfig.anonKey.trim()}
+                    className="px-4 py-2 bg-[#111C2D] hover:bg-[#222222] text-white font-bold text-xs rounded transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5 text-[#3ECF8E]" />
+                    <span>Save URL &amp; Key</span>
                   </button>
 
                   <button
                     onClick={handleSyncAllToSupabase}
-                    disabled={syncingAll || !supabaseConfig.url || !supabaseConfig.anonKey}
-                    className="px-4 py-2 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold text-xs rounded transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-2xs"
+                    disabled={syncingAll || !supabaseConfig.url.trim() || !supabaseConfig.anonKey.trim()}
+                    className="px-4 py-2 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold text-xs rounded transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-2xs cursor-pointer"
                   >
                     {syncingAll ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-[#FECE57]" />}
                     <span>1-Click Sync All Store Data to Supabase Table Editor</span>
                   </button>
+
+                  {(supabaseConfig.url || supabaseConfig.anonKey) && (
+                    <button
+                      type="button"
+                      onClick={handleClearSupabase}
+                      className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs rounded transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Clear saved Supabase URL and Anon Key"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Clear Keys</span>
+                    </button>
+                  )}
 
                   {supabaseConfig.url && supabaseConfig.anonKey && (
                     <button
@@ -1585,6 +1801,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     setProductForm({ ...productForm, color: colorName, colorHex })
                   }
                   allowMultiple={true}
+                  onPendingUrlChange={setPendingImageUrl}
                 />
               </div>
 

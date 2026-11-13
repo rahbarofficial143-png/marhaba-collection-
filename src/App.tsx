@@ -185,24 +185,46 @@ export default function App() {
     }
   }, []);
 
+  const [supabaseConfigVersion, setSupabaseConfigVersion] = useState(0);
+  const isAdminOpenRef = useRef(isAdminOpen);
   useEffect(() => {
-    syncFromSupabase();
+    isAdminOpenRef.current = isAdminOpen;
+  }, [isAdminOpen]);
 
-    // Poll every 10 seconds while visible so user devices stay in sync with Admin updates
+  useEffect(() => {
+    const handleConfigUpdated = () => {
+      setSupabaseConfigVersion((v) => v + 1);
+    };
+    window.addEventListener('marhaba-supabase-config-updated', handleConfigUpdated);
+    return () => window.removeEventListener('marhaba-supabase-config-updated', handleConfigUpdated);
+  }, []);
+
+  useEffect(() => {
+    const bgSync = () => {
+      if (!isAdminOpenRef.current) {
+        syncFromSupabase();
+      }
+    };
+
+    if (!isAdminOpenRef.current) {
+      syncFromSupabase();
+    }
+
+    // Poll every 10 seconds while visible on customer storefront so devices stay in sync
     const intervalId = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        syncFromSupabase();
+        bgSync();
       }
     }, 10000);
 
     const handleResumeSync = () => {
       if (document.visibilityState === 'visible') {
-        syncFromSupabase();
+        bgSync();
       }
     };
 
-    window.addEventListener('focus', syncFromSupabase);
-    window.addEventListener('online', syncFromSupabase);
+    window.addEventListener('focus', bgSync);
+    window.addEventListener('online', bgSync);
     document.addEventListener('visibilitychange', handleResumeSync);
 
     // Optional instant Supabase Realtime WebSocket listener (triggers immediate re-sync on DB change)
@@ -240,7 +262,7 @@ export default function App() {
           try {
             const msg = JSON.parse(event.data);
             if (msg?.event === 'postgres_changes') {
-              syncFromSupabase();
+              bgSync();
             }
           } catch {
             // ignore non-JSON frames
@@ -255,11 +277,11 @@ export default function App() {
       clearInterval(intervalId);
       if (heartbeatId) clearInterval(heartbeatId);
       if (ws) ws.close();
-      window.removeEventListener('focus', syncFromSupabase);
-      window.removeEventListener('online', syncFromSupabase);
+      window.removeEventListener('focus', bgSync);
+      window.removeEventListener('online', bgSync);
       document.removeEventListener('visibilitychange', handleResumeSync);
     };
-  }, [syncFromSupabase]);
+  }, [syncFromSupabase, supabaseConfigVersion]);
 
   // Category & Filter State
   const [activeCategory, setActiveCategory] = useState<string>('all');

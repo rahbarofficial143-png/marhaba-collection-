@@ -78,7 +78,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           <div className="text-xs text-[#666666] bg-[#FAF8F5] p-3 rounded-lg border border-[#E8E8E8] flex items-start gap-2">
             <ShieldCheck className="w-4 h-4 text-[#9F2089] shrink-0 mt-0.5" />
             <p className="leading-relaxed">
-              Marhaba Collection ke Logo par 5 baar click karne se yeh secret authentication portal khula hai.
+              Login karne ke baad aap turant <strong>Supabase Project URL &amp; Anon Key</strong> enter kar sakte hain, aur products, banners &amp; orders manage kar sakte hain.
             </p>
           </div>
 

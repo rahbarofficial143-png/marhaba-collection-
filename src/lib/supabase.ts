@@ -90,6 +90,19 @@ CREATE TABLE IF NOT EXISTS public.orders (
     items JSONB NOT NULL
 );
 
+-- Ensure older tables get any newly added columns seamlessly
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS item_count INTEGER DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS supplier_name TEXT DEFAULT 'Marhaba Certified Loom Hub';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS supplier_rating NUMERIC DEFAULT 4.8;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS m_trusted BOOLEAN DEFAULT true;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS color TEXT DEFAULT 'Royal Burgundy';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS color_hex TEXT DEFAULT '#6B1426';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS dispatch_time TEXT DEFAULT 'Dispatches in 24 hours';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS featured BOOLEAN DEFAULT false;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS reviews JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_phone TEXT DEFAULT '9334808340';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS utr_number TEXT;
+
 -- ==============================================================================
 -- 6. ROW LEVEL SECURITY (RLS) - PERMISSIVE FOR ANON & AUTHENTICATED
 -- ==============================================================================
@@ -216,32 +229,61 @@ export function saveSupabaseConfig(config: SupabaseConfig): void {
   }
 }
 
+export function clearSupabaseConfig(): void {
+  try {
+    localStorage.removeItem(SUPABASE_CONFIG_KEY);
+  } catch (e) {
+    console.error('Error clearing Supabase config', e);
+  }
+}
+
 // Clean URL helper
-function cleanSupabaseUrl(url: string): string {
-  return url.trim().replace(/\/+$/, '');
+export function cleanSupabaseUrl(url: string): string {
+  let clean = url.trim().replace(/\/+$/, '');
+  clean = clean.replace(/\/rest\/v1$/i, '');
+  if (clean && !/^https?:\/\//i.test(clean)) {
+    clean = `https://${clean}`;
+  }
+  return clean;
+}
+
+function buildSupabaseHeaders(anonKey: string, extra?: Record<string, string>): Record<string, string> {
+  const cleanKey = anonKey.trim();
+  const headers: Record<string, string> = {
+    'apikey': cleanKey,
+    ...extra
+  };
+  // Legacy anon/service JWT keys require Bearer Authorization; new sb_publishable_ keys only use apikey
+  if (cleanKey.split('.').length === 3) {
+    headers['Authorization'] = `Bearer ${cleanKey}`;
+  }
+  return headers;
+}
+
+let lastSupabaseErrorMessage: string | null = null;
+export function getLastSupabaseError(): string | null {
+  return lastSupabaseErrorMessage;
 }
 
 // Diagnostic connection tester with informative error messages
 export async function testSupabaseConnection(url: string, key: string): Promise<{ success: boolean; message: string }> {
-  if (!url || !key) {
+  if (!url.trim() || !key.trim()) {
     return { success: false, message: 'Please provide both Supabase URL and Anon API key.' };
   }
 
   const base = cleanSupabaseUrl(url);
-  if (!base.startsWith('https://') || !base.includes('.supabase.co')) {
-    return { success: false, message: 'URL should look like: https://xyzcompany.supabase.co' };
+  if (!base.startsWith('https://') && !base.startsWith('http://')) {
+    return { success: false, message: 'URL must start with https:// (e.g. https://xyzcompany.supabase.co)' };
   }
 
   try {
     const res = await fetch(`${base}/rest/v1/categories?select=id&limit=1`, {
       method: 'GET',
-      headers: {
-        'apikey': key.trim(),
-        'Authorization': `Bearer ${key.trim()}`
-      }
+      headers: buildSupabaseHeaders(key)
     });
 
     if (res.status === 200) {
+      lastSupabaseErrorMessage = null;
       return { success: true, message: 'Connected successfully! Supabase database and tables are verified.' };
     }
 
@@ -439,11 +481,9 @@ async function postgrestRequest(
   const base = cleanSupabaseUrl(cfg.url);
   const url = `${base}/rest/v1/${endpoint}`;
 
-  const headers: Record<string, string> = {
-    'apikey': cfg.anonKey.trim(),
-    'Authorization': `Bearer ${cfg.anonKey.trim()}`,
+  const headers = buildSupabaseHeaders(cfg.anonKey, {
     'Content-Type': 'application/json'
-  };
+  });
 
   if (method === 'POST') {
     // PostgREST Upsert Header
@@ -461,13 +501,50 @@ async function postgrestRequest(
 
   if (!res.ok) {
     const errorText = await res.text();
+    lastSupabaseErrorMessage = `Supabase Error (${res.status}): ${errorText}`;
     console.error(`PostgREST ${method} ${endpoint} failed (${res.status}):`, errorText);
-    throw new Error(`Supabase Error (${res.status}): ${errorText}`);
+    throw new Error(lastSupabaseErrorMessage);
   }
 
+  lastSupabaseErrorMessage = null;
   if (method === 'DELETE') return true;
   const text = await res.text();
   return text ? JSON.parse(text) : true;
+}
+
+async function upsertResilient(
+  table: string,
+  rowOrRows: Record<string, any> | Record<string, any>[],
+  config?: SupabaseConfig,
+  preferHeader?: string
+): Promise<any> {
+  let payload = Array.isArray(rowOrRows)
+    ? rowOrRows.map((r) => ({ ...r }))
+    : { ...rowOrRows };
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    try {
+      return await postgrestRequest(table, 'POST', payload, config, preferHeader);
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      const match = msg.match(/Could not find the '([^']+)' column/i);
+      if (match && match[1]) {
+        const badCol = match[1];
+        if (Array.isArray(payload)) {
+          payload = payload.map((r) => {
+            const copy = { ...r };
+            delete copy[badCol];
+            return copy;
+          });
+        } else {
+          delete payload[badCol];
+        }
+        continue;
+      }
+      throw err;
+    }
+  }
+  return await postgrestRequest(table, 'POST', payload, config, preferHeader);
 }
 
 /**
@@ -537,9 +614,8 @@ export async function saveProductToSupabase(product: Product, config?: SupabaseC
   try {
     // Ensure referenced category exists in Supabase to satisfy any foreign key constraint (products_category_fkey)
     if (product.category) {
-      await postgrestRequest(
+      await upsertResilient(
         'categories',
-        'POST',
         {
           id: product.category,
           label: product.categoryLabel || product.category,
@@ -553,7 +629,7 @@ export async function saveProductToSupabase(product: Product, config?: SupabaseC
     }
 
     const row = productToRow(product);
-    await postgrestRequest('products', 'POST', row, config);
+    await upsertResilient('products', row, config);
     return true;
   } catch (err) {
     console.error('Failed saving product to Supabase', err);
@@ -580,7 +656,7 @@ export async function deleteProductFromSupabase(productId: string, config?: Supa
 export async function saveCategoryToSupabase(category: Category, config?: SupabaseConfig): Promise<boolean> {
   try {
     const row = categoryToRow(category);
-    await postgrestRequest('categories', 'POST', row, config);
+    await upsertResilient('categories', row, config);
     return true;
   } catch (err) {
     console.error('Failed saving category to Supabase', err);
@@ -607,7 +683,7 @@ export async function deleteCategoryFromSupabase(categoryId: string, config?: Su
 export async function saveBannerToSupabase(banner: Banner, config?: SupabaseConfig): Promise<boolean> {
   try {
     const row = bannerToRow(banner);
-    await postgrestRequest('banners', 'POST', row, config);
+    await upsertResilient('banners', row, config);
     return true;
   } catch (err) {
     console.error('Failed saving banner to Supabase', err);
@@ -634,7 +710,7 @@ export async function deleteBannerFromSupabase(bannerId: string, config?: Supaba
 export async function saveOrderToSupabase(order: Order, config?: SupabaseConfig): Promise<boolean> {
   try {
     const row = orderToRow(order);
-    await postgrestRequest('orders', 'POST', row, config);
+    await upsertResilient('orders', row, config);
     return true;
   } catch (err) {
     console.error('Failed saving order to Supabase', err);
@@ -693,25 +769,25 @@ export async function batchSyncAllToSupabase(
     const allCategoriesToSync = [...categories, ...missingCategories];
     if (allCategoriesToSync.length > 0) {
       const catRows = allCategoriesToSync.map(categoryToRow);
-      await postgrestRequest('categories', 'POST', catRows, cfg);
+      await upsertResilient('categories', catRows, cfg);
     }
 
     // 2. Sync Banners
     if (banners.length > 0) {
       const bannerRows = banners.map(bannerToRow);
-      await postgrestRequest('banners', 'POST', bannerRows, cfg);
+      await upsertResilient('banners', bannerRows, cfg);
     }
 
     // 3. Sync Products
     if (products.length > 0) {
       const prodRows = products.map(productToRow);
-      await postgrestRequest('products', 'POST', prodRows, cfg);
+      await upsertResilient('products', prodRows, cfg);
     }
 
     // 4. Sync Orders if any
     if (orders.length > 0) {
       const orderRows = orders.map(orderToRow);
-      await postgrestRequest('orders', 'POST', orderRows, cfg);
+      await upsertResilient('orders', orderRows, cfg);
     }
 
     return {
