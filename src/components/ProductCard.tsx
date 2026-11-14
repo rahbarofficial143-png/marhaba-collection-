@@ -135,7 +135,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         </div>
       </div>
 
-      {/* Marhaba Card Meta Details */}
+      {/* RAZVI SHOP Card Meta Details */}
       <div className="p-3 flex flex-col flex-1 justify-between gap-1">
         <div>
           {/* Provenance / Supplier Tag */}
@@ -143,7 +143,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <span className="truncate">{product.supplierName || product.provenanceTag}</span>
             {product.mTrusted && (
               <span className="text-[9px] bg-[#9F2089]/10 text-[#9F2089] font-bold px-1 rounded shrink-0">
-                Marhaba Trusted
+                Razvi Trusted
               </span>
             )}
           </div>

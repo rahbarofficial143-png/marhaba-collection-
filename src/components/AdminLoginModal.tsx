@@ -63,12 +63,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           </button>
 
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-white/15 border border-white/25 flex items-center justify-center backdrop-blur-xs shadow-inner">
-              <Lock className="w-5 h-5 text-[#FECE57]" />
-            </div>
+            <img
+              src="/pwa-192x192.png"
+              alt="RAZVI SHOP"
+              className="w-11 h-11 rounded-full object-contain shrink-0 shadow-inner"
+            />
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="font-editorial text-xl font-bold tracking-tight">Marhaba Collection</span>
+                <span className="font-editorial text-xl font-bold tracking-tight">RAZVI SHOP</span>
                 <span className="bg-[#FECE57] text-[#4B0013] text-[9px] font-black px-1.5 py-0.5 rounded uppercase">
                   Owner Suite
                 </span>
@@ -160,7 +162,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               className="w-full py-2.5 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold text-xs rounded-lg transition-colors shadow-md disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Sparkles className="w-4 h-4 text-[#FECE57]" />
-              <span>Login to Marhaba Admin Panel</span>
+              <span>Login to RAZVI SHOP Admin Panel</span>
             </button>
           </div>
 

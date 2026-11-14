@@ -22,7 +22,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   if (!isOpen) return null;
 
   const [couponCode, setCouponCode] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<string | null>('MARHABA10');
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>('RAZVI10');
   const [couponError, setCouponError] = useState<string | null>(null);
 
   const subtotalMRP = items.reduce(
@@ -37,7 +37,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
   // Calculate coupon discount
   let couponDiscount = 0;
-  if (appliedCoupon === 'MARHABA10') {
+  if (appliedCoupon === 'RAZVI10' || appliedCoupon === 'MARHABA10') {
     couponDiscount = Math.round(itemsTotal * 0.1);
   } else if (appliedCoupon === 'WEAVER200') {
     couponDiscount = itemsTotal >= 1500 ? 200 : 0;
@@ -50,8 +50,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
   const handleApplyCoupon = (codeToApply?: string) => {
     const code = (codeToApply || couponCode).trim().toUpperCase();
-    if (code === 'MARHABA10') {
-      setAppliedCoupon('MARHABA10');
+    if (code === 'RAZVI10' || code === 'MARHABA10') {
+      setAppliedCoupon('RAZVI10');
       setCouponError(null);
     } else if (code === 'WEAVER200') {
       if (itemsTotal < 1500) {
@@ -61,7 +61,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       setAppliedCoupon('WEAVER200');
       setCouponError(null);
     } else {
-      setCouponError('Invalid coupon code. Try MARHABA10 or WEAVER200');
+      setCouponError('Invalid coupon code. Try RAZVI10 or WEAVER200');
     }
   };
 
@@ -250,7 +250,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       type="text"
                       value={couponCode}
                       onChange={(e) => setCouponCode(e.target.value)}
-                      placeholder="Enter MARHABA10"
+                      placeholder="Enter RAZVI10"
                       className="flex-1 px-3 py-1.5 text-xs border border-[#E2DCD5] rounded uppercase focus:border-[#6B1426] focus:outline-none"
                     />
                     <button
@@ -267,10 +267,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
                   <div className="flex gap-1.5 pt-1">
                     <button
-                      onClick={() => handleApplyCoupon('MARHABA10')}
+                      onClick={() => handleApplyCoupon('RAZVI10')}
                       className="text-[10px] bg-[#FAF8F5] text-[#775A00] border border-[#C59B27]/40 px-2 py-0.5 rounded font-medium"
                     >
-                      Use MARHABA10 (10% off)
+                      Use RAZVI10 (10% off)
                     </button>
                     <button
                       onClick={() => handleApplyCoupon('WEAVER200')}

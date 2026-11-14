@@ -18,13 +18,20 @@ export const Footer: React.FC<FooterProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 md:grid-cols-12 gap-8">
         {/* Brand Column */}
         <div className="md:col-span-4 space-y-3">
-          <div className="flex items-baseline gap-1.5">
-            <span className="font-editorial text-3xl font-bold tracking-tight text-[#4B0013]">
-              Marhaba
-            </span>
-            <span className="text-xl font-light text-[#9F2089] tracking-tight">
-              Collection
-            </span>
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/pwa-192x192.png"
+              alt="RAZVI SHOP Logo"
+              className="w-11 h-11 rounded-full object-contain shrink-0 shadow-xs"
+            />
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-editorial text-3xl font-bold tracking-tight text-[#4B0013]">
+                RAZVI
+              </span>
+              <span className="text-xl font-light text-[#9F2089] tracking-tight">
+                SHOP
+              </span>
+            </div>
           </div>
 
           <p className="text-xs text-[#555555] leading-relaxed">
@@ -43,10 +50,10 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="flex items-center gap-2">
               <Mail className="w-3.5 h-3.5 text-[#9F2089] shrink-0" />
               <a
-                href="mailto:marhabacollection@gmail.com"
+                href="mailto:razvishop@gmail.com"
                 className="hover:text-[#9F2089] transition-colors"
               >
-                marhabacollection@gmail.com
+                razvishop@gmail.com
               </a>
             </div>
           </div>
@@ -166,7 +173,7 @@ export const Footer: React.FC<FooterProps> = ({
       <div className="border-t border-[#E8E8E8] py-4 bg-[#F8F8F9] text-center text-xs text-[#888888]">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div>
-            © {new Date().getFullYear()} Marhaba Collection · Kishanganj, Bihar, 855108. All rights reserved.
+            © {new Date().getFullYear()} RAZVI SHOP · Kishanganj, Bihar, 855108. All rights reserved.
           </div>
           <div className="flex items-center gap-4 text-[11px]">
             <span>Privacy Policy</span>

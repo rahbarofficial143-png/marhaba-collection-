@@ -139,7 +139,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     categoryLabel: 'Pure Silk Sarees',
     artisanCluster: 'Varanasi',
     provenanceTag: 'VARANASI WEAVERS',
-    supplierName: 'Marhaba Master Loom Collective',
+    supplierName: 'RAZVI SHOP Master Loom Collective',
     color: 'Royal Burgundy',
     colorHex: '#6B1426',
     colorVariants: [] as ProductColorVariant[],
@@ -152,7 +152,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     blousePiece: 'Included (0.8m Unstitched)',
     dimensions: '6.3 meters with blouse',
     care: 'Dry Clean Only',
-    description: 'Exclusive Marhaba Collection master-weaver creation with pure zari highlights.',
+    description: 'Exclusive RAZVI SHOP master-weaver creation with pure zari highlights.',
     freeDelivery: true,
     readyToShip: true,
     isPureSilk: true,
@@ -177,7 +177,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [bannerForm, setBannerForm] = useState({
     title: '',
     subtitle: '',
-    badgeText: 'MARHABA FESTIVE DROP',
+    badgeText: 'RAZVI FESTIVE DROP',
     ctaText: 'Shop Now',
     categoryLink: 'sarees',
     imageUrl: '',
@@ -281,7 +281,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       categoryLabel: p.categoryLabel,
       artisanCluster: p.artisanCluster,
       provenanceTag: p.provenanceTag,
-      supplierName: p.supplierName || 'Marhaba Certified Supplier',
+      supplierName: p.supplierName || 'RAZVI SHOP Certified Supplier',
       color: p.colorVariants?.[0]?.colorName || p.color || 'Royal Burgundy',
       colorHex: p.colorVariants?.[0]?.colorHex || p.colorHex || '#6B1426',
       colorVariants: extraVariants,
@@ -313,7 +313,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       categoryLabel: categories[1]?.label || 'Pure Silk Sarees',
       artisanCluster: 'Varanasi',
       provenanceTag: 'VARANASI WEAVERS',
-      supplierName: 'Marhaba Direct Loom Collective',
+      supplierName: 'RAZVI SHOP Direct Loom Collective',
       color: 'Royal Burgundy',
       colorHex: '#6B1426',
       colorVariants: [],
@@ -326,7 +326,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       blousePiece: 'Included (0.8m Unstitched)',
       dimensions: '6.3 meters with blouse',
       care: 'Dry Clean Only',
-      description: 'Exclusive Marhaba Collection design crafted with generational loom precision.',
+      description: 'Exclusive RAZVI SHOP design crafted with generational loom precision.',
       freeDelivery: true,
       readyToShip: true,
       isPureSilk: true,
@@ -629,7 +629,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setBannerForm({
       title: '',
       subtitle: '',
-      badgeText: 'MARHABA EXCLUSIVE',
+      badgeText: 'RAZVI SHOP EXCLUSIVE',
       ctaText: 'Shop Now',
       categoryLink: categories[1]?.id || 'sarees',
       imageUrl: '',
@@ -983,8 +983,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </button>
 
             <div className="min-w-0 flex items-center gap-1.5">
+              <img
+                src="/pwa-192x192.png"
+                alt="RAZVI SHOP"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-contain shrink-0 shadow-xs"
+              />
               <span className="font-editorial text-sm sm:text-2xl font-bold tracking-tight text-white truncate">
-                Marhaba Collection
+                RAZVI SHOP
               </span>
               <span className="bg-[#FECE57] text-[#4B0013] text-[8px] sm:text-[10px] font-black px-1 sm:px-1.5 py-0.5 rounded uppercase shrink-0">
                 <span className="sm:hidden">Admin</span>
@@ -1552,7 +1557,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div>
                 <h3 className="font-bold text-sm text-[#222222]">Hero Promo Banners</h3>
                 <p className="text-xs text-[#666666]">
-                  Control banners displayed on the Marhaba Collection homepage carousel.
+                  Control banners displayed on the RAZVI SHOP homepage carousel.
                 </p>
               </div>
 
@@ -1776,7 +1781,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </h3>
                   </div>
                   <p className="text-xs text-[#666666] mt-1 max-w-2xl leading-relaxed">
-                    Marhaba Collection automatically stores data in your browser immediately, and also provides 1-click sync with your Supabase database. To preserve your free 2GB Supabase tier limit, images are stored via lightweight URL pointers in the database!
+                    RAZVI SHOP automatically stores data in your browser immediately, and also provides 1-click sync with your Supabase database. To preserve your free 2GB Supabase tier limit, images are stored via lightweight URL pointers in the database!
                   </p>
                 </div>
 
@@ -2882,7 +2887,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#E8E8E8] bg-[#9F2089] text-white">
               <h3 className="font-bold text-base">
-                {editingProduct ? 'Edit Product in Marhaba Collection' : 'Add New Product to Marhaba Collection'}
+                {editingProduct ? 'Edit Product in RAZVI SHOP' : 'Add New Product to RAZVI SHOP'}
               </h3>
               <button
                 onClick={() => setIsProductModalOpen(false)}
@@ -2998,7 +3003,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     required
                     value={productForm.supplierName}
                     onChange={(e) => setProductForm({ ...productForm, supplierName: e.target.value })}
-                    placeholder="e.g. Marhaba Direct Loom Hub"
+                    placeholder="e.g. RAZVI SHOP Direct Loom Hub"
                     className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
                   />
                 </div>
@@ -3301,7 +3306,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     onChange={(e) => setProductForm({ ...productForm, mTrusted: e.target.checked })}
                     className="rounded text-[#9F2089] focus:ring-[#9F2089]"
                   />
-                  <span className="font-medium text-[#222222]">Marhaba Trusted Badge</span>
+                  <span className="font-medium text-[#222222]">Razvi Trusted Badge</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -3327,7 +3332,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   type="submit"
                   className="px-6 py-2 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold rounded shadow-xs"
                 >
-                  {editingProduct ? 'Update Product' : 'Add to Marhaba Collection'}
+                  {editingProduct ? 'Update Product' : 'Add to RAZVI SHOP'}
                 </button>
               </div>
             </form>
@@ -3514,7 +3519,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   required
                   value={bannerForm.title}
                   onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })}
-                  placeholder="e.g. Marhaba Grand Wedding & Festive Drop"
+                  placeholder="e.g. RAZVI SHOP Grand Wedding & Festive Drop"
                   className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none font-bold"
                 />
               </div>

@@ -76,7 +76,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           </div>
         ) : (
           <div className="flex-1 text-xs font-semibold text-[#666666]">
-            Marhaba Collection Highlights
+            RAZVI SHOP Highlights
           </div>
         )}
 

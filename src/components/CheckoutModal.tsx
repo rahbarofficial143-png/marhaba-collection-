@@ -119,10 +119,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   };
 
   // UPI deep links
-  const upiUrl = `upi://pay?pa=${encodeURIComponent(merchantUpi)}&pn=${encodeURIComponent('Marhaba Collection')}&am=${finalTotal}&cu=INR`;
-  const phonepeUrl = `phonepe://pay?pa=${encodeURIComponent(merchantUpi)}&pn=${encodeURIComponent('Marhaba Collection')}&am=${finalTotal}&cu=INR`;
-  const gpayUrl = `gpay://upi/pay?pa=${encodeURIComponent('9334808340@okaxis')}&pn=${encodeURIComponent('Marhaba Collection')}&am=${finalTotal}&cu=INR`;
-  const paytmUrl = `paytmmp://pay?pa=${encodeURIComponent('9334808340@paytm')}&pn=${encodeURIComponent('Marhaba Collection')}&am=${finalTotal}&cu=INR`;
+  const upiUrl = `upi://pay?pa=${encodeURIComponent(merchantUpi)}&pn=${encodeURIComponent('RAZVI SHOP')}&am=${finalTotal}&cu=INR`;
+  const phonepeUrl = `phonepe://pay?pa=${encodeURIComponent(merchantUpi)}&pn=${encodeURIComponent('RAZVI SHOP')}&am=${finalTotal}&cu=INR`;
+  const gpayUrl = `gpay://upi/pay?pa=${encodeURIComponent('9334808340@okaxis')}&pn=${encodeURIComponent('RAZVI SHOP')}&am=${finalTotal}&cu=INR`;
+  const paytmUrl = `paytmmp://pay?pa=${encodeURIComponent('9334808340@paytm')}&pn=${encodeURIComponent('RAZVI SHOP')}&am=${finalTotal}&cu=INR`;
 
   const handlePlaceOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,7 +176,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#E8E8E8] bg-[#FAF8F5]">
           <div className="flex items-center gap-2">
             <span className="font-editorial text-lg font-bold text-[#4B0013]">
-              Marhaba Collection
+              RAZVI SHOP
             </span>
             <span className="text-[#888888]">·</span>
             <span className="text-xs font-semibold text-[#666666]">
@@ -400,7 +400,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                           {/* Dynamic QR Code for Desktop / Scanner */}
                           <div className="flex items-center gap-3 p-2.5 bg-white rounded border border-[#E8E8E8]">
                             <img
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=upi%3A%2F%2Fpay%3Fpa%3D${merchantPhone}%40ybl%26pn%3DMarhaba%2520Collection%26am%3D${finalTotal}%26cu%3DINR`}
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=upi%3A%2F%2Fpay%3Fpa%3D${merchantPhone}%40ybl%26pn%3DRAZVI%2520SHOP%26am%3D${finalTotal}%26cu%3DINR`}
                               alt="Scan to pay via PhonePe / GPay"
                               className="w-16 h-16 rounded border shrink-0"
                             />
@@ -560,7 +560,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 Order Confirmed!
               </h3>
               <p className="text-xs text-[#555555]">
-                Order <strong>#{placedOrder?.id}</strong> is registered with Marhaba Collection.
+                Order <strong>#{placedOrder?.id}</strong> is registered with RAZVI SHOP.
               </p>
               {placedOrder?.utrNumber && (
                 <div className="p-2 bg-emerald-50 text-emerald-800 rounded border border-emerald-200 text-xs font-semibold mt-2">
@@ -618,7 +618,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               onClick={onClose}
               className="px-6 py-2.5 bg-[#9F2089] text-white text-xs font-bold rounded hover:bg-[#80182E] transition-colors"
             >
-              Continue Browsing Marhaba Collection
+              Continue Browsing RAZVI SHOP
             </button>
           </div>
         )}

@@ -44,7 +44,7 @@ export const ArtisanHubsModal: React.FC<ArtisanHubsModalProps> = ({
         {/* Content */}
         <div className="overflow-y-auto flex-1 p-5 sm:p-6 space-y-6">
           <p className="text-xs sm:text-sm text-[#554243] leading-relaxed max-w-2xl">
-            Marhaba Elegance operates on a fair-trade, direct-from-weaver protocol. By eliminating multiple middlemen and urban boutique markups, our artisan collectives retain 100% of fair loom value while buyers access pure heritage textiles at honest prices.
+            RAZVI SHOP operates on a fair-trade, direct-from-weaver protocol. By eliminating multiple middlemen and urban boutique markups, our artisan collectives retain 100% of fair loom value while buyers access pure heritage textiles at honest prices.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

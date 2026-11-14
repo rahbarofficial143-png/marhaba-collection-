@@ -1021,7 +1021,7 @@ export default function App() {
           <div>
             <h2 className="text-base sm:text-xl font-bold text-[#222222] tracking-tight">
               {activeCategory === 'all'
-                ? 'Marhaba Collection · Top Handcrafted Picks'
+                ? 'RAZVI SHOP · Top Handcrafted Picks'
                 : `${activeCategory.toUpperCase()} · Curated Creations`}
             </h2>
             <div className="text-xs text-[#666666]">
@@ -1033,8 +1033,12 @@ export default function App() {
         {filteredProducts.length === 0 ? (
           isInitialLoading && products.length === 0 ? (
             <div className="py-16 text-center max-w-md mx-auto space-y-3 bg-white p-8 rounded-lg border border-[#E8E8E8]">
-              <div className="w-12 h-12 rounded-full border-4 border-[#FDE5F4] border-t-[#9F2089] animate-spin mx-auto" />
-              <h3 className="text-base font-bold text-[#222222]">Loading Marhaba Collection...</h3>
+              <img
+                src="/pwa-512x512.png"
+                alt="RAZVI SHOP"
+                className="w-20 h-20 rounded-full object-contain mx-auto shadow-md animate-pulse"
+              />
+              <h3 className="text-base font-bold text-[#222222]">Loading RAZVI SHOP...</h3>
               <p className="text-xs text-[#666666]">Syncing latest creations &amp; banners</p>
             </div>
           ) : (
@@ -1076,7 +1080,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer (Marhaba Collection About, Gmail, Phone, Kishanganj Bihar 855108 Address) */}
+      {/* Footer (RAZVI SHOP About, Gmail, Phone, Kishanganj Bihar 855108 Address) */}
       <Footer
         onSelectCategory={handleSelectCategory}
         onOpenArtisans={() => setIsArtisansOpen(true)}

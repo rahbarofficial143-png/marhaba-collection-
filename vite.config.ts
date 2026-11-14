@@ -14,10 +14,10 @@ export default defineConfig(() => {
         includeAssets: ['icon.svg', 'apple-touch-icon.png'],
         manifest: {
           id: '/',
-          name: 'Marhaba Collection',
-          short_name: 'Marhaba',
+          name: 'RAZVI SHOP',
+          short_name: 'RAZVI SHOP',
           description:
-            'Marhaba Collection - Authentic ethnic and contemporary fashion direct from master weavers. Kishanganj, Bihar, 855108.',
+            'RAZVI SHOP - Authentic ethnic and contemporary fashion direct from master weavers. Kishanganj, Bihar, 855108.',
           start_url: '/',
           scope: '/',
           display: 'standalone',

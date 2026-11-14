@@ -49,14 +49,14 @@ export const Header: React.FC<HeaderProps> = ({
     if (isInstallable) {
       const outcome = await install();
       if (outcome === 'accepted') {
-        setInstallFeedback('Marhaba Collection App is being installed on your device!');
+        setInstallFeedback('RAZVI SHOP App is being installed on your device!');
         return;
       }
     }
     setShowAppPrompt(true);
   };
 
-  // 5 consecutive clicks on "Marhaba Collection" logo opens the Admin Login modal
+  // 5 consecutive clicks on "RAZVI SHOP" logo opens the Admin Login modal
   const handleLogoClick = () => {
     onSelectCategory('all');
     const next = clickCountRef.current + 1;
@@ -119,24 +119,31 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Main Header Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
-        {/* Brand: Marhaba Collection with 5-Click Secret Admin Doorway */}
+        {/* Brand: RAZVI SHOP with 5-Click Secret Admin Doorway */}
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={handleLogoClick}
-            className="flex flex-col text-left focus:outline-none group select-none relative cursor-pointer"
-            title="Marhaba Collection"
+            className="flex items-center gap-2 text-left focus:outline-none group select-none relative cursor-pointer"
+            title="RAZVI SHOP"
           >
-            <div className="flex items-baseline gap-1.5">
-              <span className="font-editorial text-2xl sm:text-3xl font-bold tracking-tight text-[#4B0013] group-hover:text-[#9F2089] transition-colors leading-none">
-                Marhaba
-              </span>
-              <span className="text-xl sm:text-2xl font-light text-[#9F2089] tracking-tight">
-                Collection
+            <img
+              src="/pwa-192x192.png"
+              alt="RAZVI SHOP Logo"
+              className="w-9 h-9 sm:w-11 sm:h-11 rounded-full object-contain shrink-0 shadow-xs"
+            />
+            <div className="flex flex-col">
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-editorial text-xl sm:text-3xl font-bold tracking-tight text-[#4B0013] group-hover:text-[#9F2089] transition-colors leading-none">
+                  RAZVI
+                </span>
+                <span className="text-lg sm:text-2xl font-light text-[#9F2089] tracking-tight leading-none">
+                  SHOP
+                </span>
+              </div>
+              <span className="text-[9px] font-bold text-[#C59B27] tracking-widest uppercase mt-0.5">
+                Haute Handloom &amp; Direct Looms
               </span>
             </div>
-            <span className="text-[9px] font-bold text-[#C59B27] tracking-widest uppercase mt-0.5">
-              Haute Handloom &amp; Direct Looms
-            </span>
           </button>
         </div>
 
@@ -169,7 +176,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={handleMobileAppClick}
               className="md:hidden flex items-center gap-1 text-[11px] font-bold text-[#9F2089] bg-[#FDE5F4] border border-[#9F2089]/30 px-2 py-1 rounded"
-              title="Install Marhaba Mobile App"
+              title="Install RAZVI SHOP Mobile App"
             >
               <Download className="w-3.5 h-3.5" />
               <span>App</span>
@@ -289,16 +296,20 @@ export const Header: React.FC<HeaderProps> = ({
               <X className="w-4 h-4" />
             </button>
 
-            <div className="w-14 h-14 bg-gradient-to-br from-[#4B0013] via-[#80182E] to-[#9F2089] text-white rounded-2xl flex items-center justify-center mx-auto shadow-md border border-[#FECE57]">
-              <Smartphone className="w-7 h-7 text-[#FECE57]" />
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-md">
+              <img
+                src="/pwa-192x192.png"
+                alt="RAZVI SHOP App Icon"
+                className="w-full h-full rounded-full object-contain"
+              />
             </div>
 
             <div>
               <h3 className="font-bold text-lg text-[#222222]">
-                Marhaba Collection Mobile App
+                RAZVI SHOP Mobile App
               </h3>
               <p className="text-xs text-[#666666] mt-1">
-                Install Marhaba Collection directly on your phone as a standalone Android/iOS app — same store, instant launch from Home Screen, and live automatic updates whenever Admin adds or edits products.
+                Install RAZVI SHOP directly on your phone as a standalone Android/iOS app — same store, instant launch from Home Screen, and live automatic updates whenever Admin adds or edits products.
               </p>
             </div>
 
@@ -312,7 +323,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={async () => {
                   const outcome = await install();
                   if (outcome === 'accepted') {
-                    setInstallFeedback('Installing Marhaba Collection App on your device...');
+                    setInstallFeedback('Installing RAZVI SHOP App on your device...');
                     setShowAppPrompt(false);
                   }
                 }}
@@ -353,7 +364,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <strong>"Add to Home screen"</strong>.
                   </li>
                   <li>
-                    Chrome installs Marhaba Collection directly onto your phone like a native Android app (WebAPK) with auto-updates!
+                    Chrome installs RAZVI SHOP directly onto your phone like a native Android app (WebAPK) with auto-updates!
                   </li>
                 </ol>
               </div>

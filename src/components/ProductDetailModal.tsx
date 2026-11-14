@@ -205,7 +205,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               type="button"
               onClick={handleCopyCode}
               className="text-[10px] sm:text-[11px] font-semibold text-[#666666] hover:text-[#9F2089] flex items-center gap-1 bg-white border border-[#CCCCCC] px-2 py-1 rounded whitespace-nowrap cursor-pointer"
-              title={`Copy Marhaba Product Code (${productCode})`}
+              title={`Copy RAZVI SHOP Product Code (${productCode})`}
             >
               <Copy className="w-3 h-3 shrink-0" />
               <span className="sm:hidden">{copiedCode ? 'Copied!' : 'Code'}</span>
@@ -357,7 +357,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
                   {product.mTrusted && (
                     <span className="text-[10px] bg-[#9F2089] text-white font-bold px-2 py-0.5 rounded">
-                      Marhaba Trusted
+                      Razvi Trusted
                     </span>
                   )}
                 </div>
@@ -821,7 +821,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           <div className="fixed inset-0 z-60 bg-black/60 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg p-5 max-w-md w-full border border-[#E8E8E8] shadow-2xl space-y-3">
               <div className="flex items-center justify-between border-b border-[#E8E8E8] pb-2">
-                <h4 className="font-bold text-sm text-[#222222]">Marhaba Collection Size & Measurement Guide</h4>
+                <h4 className="font-bold text-sm text-[#222222]">RAZVI SHOP Size &amp; Measurement Guide</h4>
                 <button onClick={() => setShowSizeChart(false)} className="text-[#666666]">
                   <X className="w-4 h-4" />
                 </button>

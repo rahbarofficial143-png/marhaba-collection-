@@ -6,7 +6,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     label: 'All Ethnic',
     slug: 'all',
     imageUrl: '',
-    description: 'Complete Marhaba Collection handcrafted ethnic & festive apparel'
+    description: 'Complete RAZVI SHOP handcrafted ethnic & festive apparel'
   },
   {
     id: 'sarees',

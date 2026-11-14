@@ -18,7 +18,7 @@ import {
 } from './userCodec';
 
 export const SUPABASE_REVIEWS_SQL = `-- ==============================================================================
--- MARHABA COLLECTION: PRODUCT REVIEWS TABLE SQL (Customer & Admin Reviews)
+-- RAZVI SHOP: PRODUCT REVIEWS TABLE SQL (Customer & Admin Reviews)
 -- Run this in Supabase SQL Editor to enable dedicated public.product_reviews table
 -- ==============================================================================
 
@@ -53,7 +53,7 @@ BEGIN
 END $$;`;
 
 export const SUPABASE_USERS_SQL = `-- ==============================================================================
--- MARHABA COLLECTION: STORE USERS TABLE SQL (Real-Time User Directory & Ultra-Low KB)
+-- RAZVI SHOP: STORE USERS TABLE SQL (Real-Time User Directory & Ultra-Low KB)
 -- Run this in Supabase SQL Editor to track registered users & profile/address updates
 -- ==============================================================================
 
@@ -84,7 +84,7 @@ BEGIN
 END $$;`;
 
 export const SUPABASE_SQL_SCHEMA = `-- ==============================================================================
--- MARHABA COLLECTION: COMPLETE PRODUCTION SUPABASE DATABASE SCHEMA & SEED DATA
+-- RAZVI SHOP: COMPLETE PRODUCTION SUPABASE DATABASE SCHEMA & SEED DATA
 -- Run this in your Supabase SQL Editor: https://supabase.com/dashboard/project/_/sql
 -- ==============================================================================
 
@@ -112,9 +112,9 @@ CREATE TABLE IF NOT EXISTS public.products (
     category TEXT NOT NULL DEFAULT 'sarees',
     category_label TEXT NOT NULL DEFAULT 'Pure Silk Sarees',
     artisan_cluster TEXT NOT NULL DEFAULT 'Varanasi',
-    artisan_name TEXT NOT NULL DEFAULT 'Marhaba Master Weavers',
+    artisan_name TEXT NOT NULL DEFAULT 'RAZVI SHOP Master Weavers',
     provenance_tag TEXT NOT NULL DEFAULT 'VARANASI WEAVERS',
-    supplier_name TEXT DEFAULT 'Marhaba Certified Loom Hub',
+    supplier_name TEXT DEFAULT 'RAZVI SHOP Certified Loom Hub',
     supplier_rating NUMERIC DEFAULT 4.8,
     m_trusted BOOLEAN DEFAULT true,
     color TEXT DEFAULT 'Royal Burgundy',
@@ -148,7 +148,7 @@ CREATE TABLE IF NOT EXISTS public.banners (
     id TEXT PRIMARY KEY DEFAULT ('banner_' || substr(md5(random()::text), 1, 8)),
     title TEXT NOT NULL,
     subtitle TEXT NOT NULL,
-    badge_text TEXT NOT NULL DEFAULT 'MARHABA EXCLUSIVE',
+    badge_text TEXT NOT NULL DEFAULT 'RAZVI SHOP EXCLUSIVE',
     cta_text TEXT NOT NULL DEFAULT 'Shop Now',
     category_link TEXT NOT NULL DEFAULT 'sarees',
     image_url TEXT NOT NULL,
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
 
 -- Ensure older tables get any newly added columns seamlessly
 ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS item_count INTEGER DEFAULT 0;
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS supplier_name TEXT DEFAULT 'Marhaba Certified Loom Hub';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS supplier_name TEXT DEFAULT 'RAZVI SHOP Certified Loom Hub';
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS supplier_rating NUMERIC DEFAULT 4.8;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS m_trusted BOOLEAN DEFAULT true;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS color TEXT DEFAULT 'Royal Burgundy';
@@ -230,7 +230,7 @@ CREATE POLICY "Allow All Orders" ON public.orders FOR ALL TO anon, authenticated
 -- ==============================================================================
 INSERT INTO public.categories (id, label, slug, image_url, description)
 VALUES
-  ('all', 'All Ethnic', 'all', '', 'Complete Marhaba Collection handcrafted ethnic & festive apparel'),
+  ('all', 'All Ethnic', 'all', '', 'Complete RAZVI SHOP handcrafted ethnic & festive apparel'),
   ('sarees', 'Pure Sarees', 'sarees', '', 'Pure Katan Banarasi, Kanchipuram, Chanderi & Organza Sarees'),
   ('lehengas', 'Bridal Lehengas', 'lehengas', '', 'Micro-Velvet, Raw Silk & Zardozi Wedding Lehengas'),
   ('anarkalis', 'Kurti & Suits', 'anarkalis', '', 'Lucknowi Chikankari, Shararas & Flowing Anarkali Sets'),
@@ -569,7 +569,7 @@ export function productToRow(p: Product): Record<string, any> {
     artisan_cluster: p.artisanCluster,
     artisan_name: p.artisanName,
     provenance_tag: p.provenanceTag,
-    supplier_name: p.supplierName || 'Marhaba Certified Loom Hub',
+    supplier_name: p.supplierName || 'RAZVI SHOP Certified Loom Hub',
     supplier_rating: p.supplierRating ?? 4.8,
     m_trusted: p.mTrusted ?? true,
     color: primaryVariantColor,
@@ -610,7 +610,7 @@ export function rowToProduct(row: any): Product {
     category: row.category,
     categoryLabel: row.category_label || row.category,
     artisanCluster: row.artisan_cluster || 'Varanasi',
-    artisanName: row.artisan_name || 'Marhaba Master Weavers',
+    artisanName: row.artisan_name || 'RAZVI SHOP Master Weavers',
     provenanceTag: row.provenance_tag || 'VARANASI WEAVERS',
     supplierName: row.supplier_name,
     supplierRating: Number(row.supplier_rating || 4.8),

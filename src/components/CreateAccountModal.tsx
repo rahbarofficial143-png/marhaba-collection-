@@ -91,19 +91,26 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
             <button
               type="button"
               onClick={handleLogoTap}
-              className="text-left focus:outline-none select-none cursor-pointer"
+              className="flex items-center gap-2.5 text-left focus:outline-none select-none cursor-pointer"
             >
-              <div className="flex items-baseline gap-1.5">
-                <span className="font-editorial text-2xl font-bold tracking-tight text-white">
-                  Marhaba
-                </span>
-                <span className="text-xl font-light text-[#FECE57] tracking-tight">
-                  Collection
-                </span>
+              <img
+                src="/pwa-192x192.png"
+                alt="RAZVI SHOP"
+                className="w-10 h-10 rounded-full object-contain shrink-0 shadow-xs"
+              />
+              <div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="font-editorial text-2xl font-bold tracking-tight text-white">
+                    RAZVI
+                  </span>
+                  <span className="text-xl font-light text-[#FECE57] tracking-tight">
+                    SHOP
+                  </span>
+                </div>
+                <p className="text-[11px] text-white/85 mt-0.5">
+                  Create Your Account · Saved Permanently on This Device
+                </p>
               </div>
-              <p className="text-[11px] text-white/85 mt-0.5">
-                Create Your Account · Saved Permanently on This Device
-              </p>
             </button>
             <div className="w-10 h-10 rounded-full bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
               <UserCheck className="w-5 h-5 text-[#FECE57]" />

@@ -30,7 +30,7 @@ function getStatusMeta(status: Order['status']) {
         label: 'Confirmed',
         stepIndex: 1,
         badgeClass: 'bg-blue-100 text-blue-800 border-blue-200',
-        summary: 'Order confirmed by Marhaba Collection'
+        summary: 'Order confirmed by RAZVI SHOP'
       };
     case 'artisan_packing':
     case 'loom_inspection':
