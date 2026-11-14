@@ -51,10 +51,19 @@ try {
 }
 
 export default function App() {
-  // Admin View State (persists logged-in Admin session until Logout)
+  // Admin View State (persists logged-in Admin session across app/browser restarts until Logout)
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     try {
-      return typeof sessionStorage !== 'undefined' && sessionStorage.getItem('marhaba_admin_auth') === 'true';
+      const persisted =
+        typeof localStorage !== 'undefined' && localStorage.getItem('marhaba_admin_auth') === 'true';
+      if (persisted) return true;
+      const legacySession =
+        typeof sessionStorage !== 'undefined' && sessionStorage.getItem('marhaba_admin_auth') === 'true';
+      if (legacySession && typeof localStorage !== 'undefined') {
+        localStorage.setItem('marhaba_admin_auth', 'true');
+        return true;
+      }
+      return false;
     } catch {
       return false;
     }
@@ -756,7 +765,23 @@ export default function App() {
   };
 
   const handleTriggerAdminLogin = () => {
-    if (isAdminAuthenticated || sessionStorage.getItem('marhaba_admin_auth') === 'true') {
+    const storedAuth = (() => {
+      try {
+        return (
+          localStorage.getItem('marhaba_admin_auth') === 'true' ||
+          sessionStorage.getItem('marhaba_admin_auth') === 'true'
+        );
+      } catch {
+        return false;
+      }
+    })();
+
+    if (isAdminAuthenticated || storedAuth) {
+      try {
+        localStorage.setItem('marhaba_admin_auth', 'true');
+      } catch {
+        // ignore storage error
+      }
       setIsAdminAuthenticated(true);
       setIsAdminOpen(true);
     } else {
@@ -765,9 +790,17 @@ export default function App() {
   };
 
   const handleAdminLogout = () => {
-    sessionStorage.removeItem('marhaba_admin_auth');
+    try {
+      localStorage.removeItem('marhaba_admin_auth');
+      sessionStorage.removeItem('marhaba_admin_auth');
+    } catch {
+      // ignore storage error
+    }
     setIsAdminAuthenticated(false);
     setIsAdminOpen(false);
+    if (!userProfile) {
+      setIsCreateAccountOpen(true);
+    }
   };
 
   const handleResetToDemo = () => {
@@ -1059,6 +1092,12 @@ export default function App() {
         isOpen={isAdminLoginOpen}
         onClose={() => setIsAdminLoginOpen(false)}
         onLoginSuccess={() => {
+          try {
+            localStorage.setItem('marhaba_admin_auth', 'true');
+            sessionStorage.setItem('marhaba_admin_auth', 'true');
+          } catch {
+            // ignore storage error
+          }
           setIsAdminAuthenticated(true);
           setIsAdminLoginOpen(false);
           setIsAdminOpen(false);

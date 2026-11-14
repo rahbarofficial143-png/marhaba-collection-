@@ -30,7 +30,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
     // Verification against owner credentials
     if (cleanUser === 'RAHBAR786' && cleanPass === 'RAHBAR7860') {
-      sessionStorage.setItem('marhaba_admin_auth', 'true');
+      try {
+        localStorage.setItem('marhaba_admin_auth', 'true');
+        sessionStorage.setItem('marhaba_admin_auth', 'true');
+      } catch {
+        // ignore storage errors
+      }
       setUsername('');
       setPassword('');
       setIsSubmitting(false);
