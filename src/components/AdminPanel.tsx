@@ -3,15 +3,17 @@ import {
   Plus, Edit, Trash2, ArrowLeft, Image as ImageIcon, Package, 
   ShoppingBag, Check, X, RefreshCw, FolderTree, Database, 
   Copy, ExternalLink, ShieldCheck, CheckCircle2, AlertCircle, Zap, Upload, LogOut, User,
-  Eye, EyeOff, KeyRound, Link2, Star, MessageSquare
+  Eye, EyeOff, KeyRound, Link2, Star, MessageSquare, Users, Phone, MapPin, Building2, Calendar
 } from 'lucide-react';
-import { Product, Banner, Order, Category, SupabaseConfig, ProductColorVariant, ProductReview } from '../types';
+import { Product, Banner, Order, Category, SupabaseConfig, ProductColorVariant, ProductReview, UserProfile } from '../types';
 import { ImageColorPicker } from './ImageColorPicker';
 import { encodeMultiColorSingleLink, getSupabaseEncodedPayloadKb } from '../lib/multiColorCodec';
 import { createCompactReviewId, getCompactReviewKb } from '../lib/reviewCodec';
+import { buildStableUserId, getCompactUserKb } from '../lib/userCodec';
 import { 
   SUPABASE_SQL_SCHEMA, 
   SUPABASE_REVIEWS_SQL,
+  SUPABASE_USERS_SQL,
   getSupabaseConfig, 
   saveSupabaseConfig, 
   clearSupabaseConfig,
@@ -38,6 +40,7 @@ interface AdminPanelProps {
   categories: Category[];
   banners: Banner[];
   orders: Order[];
+  users: UserProfile[];
   onAddProduct: (product: Product) => void;
   onUpdateProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
@@ -51,6 +54,7 @@ interface AdminPanelProps {
   onDeleteOrder: (orderId: string) => void;
   onSaveProductReview: (productId: string, review: ProductReview) => Promise<boolean>;
   onDeleteProductReview: (productId: string, reviewId: string) => Promise<boolean>;
+  onDeleteUser?: (userId: string) => Promise<boolean>;
   onResetToDemo: () => void;
   onRefreshFromSupabase?: () => void;
   onClose: () => void;
@@ -62,6 +66,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   categories,
   banners,
   orders,
+  users,
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
@@ -75,13 +80,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onDeleteOrder,
   onSaveProductReview,
   onDeleteProductReview,
+  onDeleteUser,
   onResetToDemo,
   onRefreshFromSupabase,
   onClose,
   onLogout
 }) => {
   const initialSupabaseCfg = getSupabaseConfig();
-  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'banners' | 'orders' | 'reviews' | 'supabase'>(
+  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'banners' | 'orders' | 'reviews' | 'users' | 'supabase'>(
     initialSupabaseCfg.url && initialSupabaseCfg.anonKey ? 'products' : 'supabase'
   );
   const [searchProductQuery, setSearchProductQuery] = useState('');
@@ -217,6 +223,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [reviewImgCompressing, setReviewImgCompressing] = useState(false);
   const [showReviewsSqlBox, setShowReviewsSqlBox] = useState(false);
   const [copiedReviewsSql, setCopiedReviewsSql] = useState(false);
+
+  // Real-Time Users Directory State
+  const [searchUserQuery, setSearchUserQuery] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [showUsersSqlBox, setShowUsersSqlBox] = useState(false);
+  const [copiedUsersSql, setCopiedUsersSql] = useState(false);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToastMessage({ text, type });
@@ -1143,6 +1155,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             >
               <Star className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
               <span>Reviews ({totalReviewsCount})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`py-2.5 sm:py-3 px-1.5 sm:px-2 text-[11px] sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer ${
+                activeTab === 'users'
+                  ? 'border-[#9F2089] text-[#9F2089]'
+                  : 'border-transparent text-[#666666] hover:text-[#222222]'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#038D63]" />
+              <span>Users ({users.length})</span>
             </button>
 
             <button
@@ -2496,6 +2520,355 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
         )}
+
+        {/* ============================================================ */}
+        {/* TAB 7: REAL-TIME USERS DIRECTORY & ADDRESS INSPECTOR         */}
+        {/* ============================================================ */}
+        {activeTab === 'users' && (() => {
+          const q = searchUserQuery.trim().toLowerCase();
+          const filteredUsers = users.filter((u) => {
+            if (!q) return true;
+            return (
+              (u.fullName || '').toLowerCase().includes(q) ||
+              (u.phone || '').toLowerCase().includes(q) ||
+              (u.city || '').toLowerCase().includes(q) ||
+              (u.state || '').toLowerCase().includes(q) ||
+              (u.pincode || '').toLowerCase().includes(q) ||
+              (u.buildingOrVillage || '').toLowerCase().includes(q) ||
+              (u.fullAddress || '').toLowerCase().includes(q)
+            );
+          });
+
+          const totalUsersKb = users.reduce((sum, u) => sum + getCompactUserKb(u), 0);
+          const resolvedSelectedId =
+            selectedUserId && filteredUsers.some((u) => buildStableUserId(u.phone, u.id) === selectedUserId)
+              ? selectedUserId
+              : filteredUsers[0]
+              ? buildStableUserId(filteredUsers[0].phone, filteredUsers[0].id)
+              : null;
+
+          const activeUser =
+            filteredUsers.find((u) => buildStableUserId(u.phone, u.id) === resolvedSelectedId) || null;
+
+          const activeUserOrders = activeUser
+            ? orders.filter(
+                (o) =>
+                  o.shippingAddress?.phone?.trim() === activeUser.phone?.trim() ||
+                  o.shippingAddress?.fullName?.trim().toLowerCase() === activeUser.fullName?.trim().toLowerCase()
+              )
+            : [];
+
+          return (
+            <div className="space-y-4">
+              {/* Top Header & SQL Toggle */}
+              <div className="bg-white p-4 rounded-lg border border-[#E8E8E8] shadow-xs space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
+                      <Users className="w-4 h-4 text-[#038D63]" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm sm:text-base font-bold text-[#222222]">
+                          Registered Users ({users.length})
+                        </h2>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Real-Time Sync
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#666666]">
+                        Har user ke account create ya address update karte hi turant Supabase se update hota hai · Total Storage: <strong className="text-[#038D63]">{totalUsersKb.toFixed(2)} KB</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {onRefreshFromSupabase && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onRefreshFromSupabase();
+                          showToast('Latest registered users synced from Supabase!');
+                        }}
+                        className="px-3 py-1.5 bg-[#FAF8F5] hover:bg-[#EFEAE2] border border-[#DDDDDD] text-[#333333] text-xs font-bold rounded flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 text-[#9F2089]" />
+                        <span>Refresh Users</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setShowUsersSqlBox((prev) => !prev)}
+                      className="px-3 py-1.5 bg-[#FAF8F5] hover:bg-[#FDE5F4] border border-[#9F2089]/30 text-[#9F2089] text-xs font-bold rounded flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Database className="w-3.5 h-3.5" />
+                      <span>{showUsersSqlBox ? 'Hide Users SQL' : 'Supabase Users SQL'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Search Box */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={searchUserQuery}
+                    onChange={(e) => setSearchUserQuery(e.target.value)}
+                    placeholder="Search user by name, phone, village, city, state or pincode..."
+                    className="flex-1 px-3 py-2 text-xs border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:outline-none"
+                  />
+                </div>
+
+                {showUsersSqlBox && (
+                  <div className="pt-2 border-t border-[#E8E8E8] space-y-2 animate-fadeIn">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[11px] text-[#555555]">
+                        Supabase SQL Editor me ye SQL run karein taaki <code>public.store_users</code> real-time table ban jaye (ultra-low KB compact storage):
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(SUPABASE_USERS_SQL);
+                          setCopiedUsersSql(true);
+                          showToast('Users SQL copied to clipboard!');
+                          setTimeout(() => setCopiedUsersSql(false), 2500);
+                        }}
+                        className="px-3 py-1.5 bg-[#9F2089] hover:bg-[#80182E] text-white text-[11px] font-bold rounded flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedUsersSql ? 'SQL Copied!' : 'Copy Users SQL'}</span>
+                      </button>
+                    </div>
+                    <pre className="p-3 bg-[#1E1E2E] text-[#CDD6F4] text-[11px] font-mono rounded-lg overflow-x-auto max-h-60 leading-relaxed">
+                      {SUPABASE_USERS_SQL}
+                    </pre>
+                  </div>
+                )}
+              </div>
+
+              {/* Main Split: Users Table (Ek-Ek Column) + Click-to-View Full Address Details */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                {/* Column-by-Column Users Table */}
+                <div className="lg:col-span-7 bg-white rounded-lg border border-[#E8E8E8] shadow-xs overflow-hidden">
+                  <div className="px-4 py-3 bg-[#FAF8F5] border-b border-[#E8E8E8] flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#555555]">
+                      All Users ({filteredUsers.length}) · Click Any Row for Full Address
+                    </h3>
+                  </div>
+
+                  {filteredUsers.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-[#777777] space-y-2">
+                      <Users className="w-8 h-8 text-[#CCCCCC] mx-auto" />
+                      <p className="font-semibold text-[#444444]">
+                        {users.length === 0
+                          ? 'Abhi tak koi user registered nahi mila.'
+                          : 'Search se matching koi user nahi mila.'}
+                      </p>
+                      {users.length === 0 && (
+                        <p className="text-[11px]">
+                          Naya user account banate hi ya profile update karte hi yahan real-time me dikhne lagega (upar <strong>Supabase Users SQL</strong> run karna na bhoolein).
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-[#FAF8F5] border-b border-[#E8E8E8] text-[10px] uppercase tracking-wider text-[#666666]">
+                            <th className="py-2.5 px-3 font-bold">Name</th>
+                            <th className="py-2.5 px-2.5 font-bold">Phone</th>
+                            <th className="py-2.5 px-2 font-bold hidden sm:table-cell">Age</th>
+                            <th className="py-2.5 px-2.5 font-bold">City / State</th>
+                            <th className="py-2.5 px-2.5 font-bold hidden md:table-cell">Pincode</th>
+                            <th className="py-2.5 px-2.5 font-bold text-right">KB</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#F0F0F2]">
+                          {filteredUsers.map((u) => {
+                            const uid = buildStableUserId(u.phone, u.id);
+                            const isSelected = uid === resolvedSelectedId;
+                            const userKb = getCompactUserKb(u).toFixed(2);
+                            return (
+                              <tr
+                                key={uid}
+                                onClick={() => setSelectedUserId(uid)}
+                                className={`cursor-pointer transition-colors ${
+                                  isSelected
+                                    ? 'bg-[#FDE5F4]/65 border-l-4 border-l-[#9F2089]'
+                                    : 'hover:bg-[#FAF8F5]'
+                                }`}
+                              >
+                                <td className="py-2.5 px-3">
+                                  <div className="font-bold text-[#222222] truncate max-w-[130px] sm:max-w-[160px]">
+                                    {u.fullName}
+                                  </div>
+                                  <div className="text-[10px] text-[#777777] truncate max-w-[130px] sm:hidden">
+                                    {u.buildingOrVillage}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-2.5 font-mono text-[11px] text-[#333333] whitespace-nowrap">
+                                  {u.phone}
+                                </td>
+                                <td className="py-2.5 px-2 hidden sm:table-cell text-[#555555]">
+                                  {u.age || '-'} yrs
+                                </td>
+                                <td className="py-2.5 px-2.5">
+                                  <div className="font-semibold text-[#333333] truncate max-w-[120px]">
+                                    {u.city}
+                                  </div>
+                                  <div className="text-[10px] text-[#777777] truncate max-w-[120px]">
+                                    {u.state}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-2.5 font-mono text-[11px] text-[#444444] hidden md:table-cell">
+                                  {u.pincode}
+                                </td>
+                                <td className="py-2.5 px-2.5 text-right whitespace-nowrap">
+                                  <span className="text-[10px] font-mono font-bold text-[#038D63] bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                    {userKb}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected User Full Address & Profile Details Panel */}
+                <div className="lg:col-span-5 bg-white rounded-lg border border-[#E8E8E8] shadow-xs overflow-hidden">
+                  {!activeUser ? (
+                    <div className="p-8 text-center text-xs text-[#777777]">
+                      Kisi bhi user par click karein unka poora address, phone, age aur order history dekhne ke liye.
+                    </div>
+                  ) : (
+                    <div className="p-4 space-y-3.5 text-xs">
+                      <div className="flex items-start justify-between gap-2 pb-3 border-b border-[#E8E8E8]">
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-[#9F2089]">
+                            Full User Profile &amp; Address
+                          </div>
+                          <h3 className="text-base font-bold text-[#222222] truncate">
+                            {activeUser.fullName}
+                          </h3>
+                          <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-[#555555]">
+                            <a
+                              href={`tel:${activeUser.phone}`}
+                              className="inline-flex items-center gap-1 font-mono font-bold text-[#038D63] hover:underline"
+                            >
+                              <Phone className="w-3 h-3" />
+                              <span>{activeUser.phone}</span>
+                            </a>
+                            <span>· Age: <strong>{activeUser.age || '-'}</strong></span>
+                            <span className="font-mono text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-bold">
+                              {getCompactUserKb(activeUser).toFixed(2)} KB saved
+                            </span>
+                          </div>
+                        </div>
+
+                        {onDeleteUser && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const targetId = buildStableUserId(activeUser.phone, activeUser.id);
+                              setPendingConfirm({
+                                title: 'Remove User Record?',
+                                message: `${activeUser.fullName} (${activeUser.phone}) ka record Admin Users list aur Supabase se delete ho jayega.`,
+                                confirmLabel: 'Delete User',
+                                onConfirm: async () => {
+                                  const ok = await onDeleteUser(targetId);
+                                  showToast(
+                                    ok ? 'User removed from Supabase!' : 'User removed locally.',
+                                    ok ? 'success' : 'info'
+                                  );
+                                }
+                              });
+                            }}
+                            className="p-1.5 text-rose-700 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 shrink-0 cursor-pointer"
+                            title="Delete User Record"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Address Column-by-Column Breakdown */}
+                      <div className="space-y-2">
+                        <div className="p-2.5 bg-[#FAF8F5] rounded-lg border border-[#E8E8E8]">
+                          <div className="text-[10px] font-bold uppercase text-[#777777] flex items-center gap-1">
+                            <Building2 className="w-3 h-3 text-[#9F2089]" />
+                            <span>Village / House / Building Name</span>
+                          </div>
+                          <div className="font-bold text-[#222222] mt-0.5">
+                            {activeUser.buildingOrVillage || '—'}
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 bg-[#FAF8F5] rounded-lg border border-[#E8E8E8]">
+                          <div className="text-[10px] font-bold uppercase text-[#777777] flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-[#9F2089]" />
+                            <span>Full Address (Road / Mohalla / Area)</span>
+                          </div>
+                          <div className="font-semibold text-[#222222] mt-0.5 leading-relaxed">
+                            {activeUser.fullAddress || '—'}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="p-2.5 bg-[#FAF8F5] rounded-lg border border-[#E8E8E8]">
+                            <div className="text-[10px] font-bold uppercase text-[#777777]">City / Town</div>
+                            <div className="font-bold text-[#222222] mt-0.5">{activeUser.city || '—'}</div>
+                          </div>
+                          <div className="p-2.5 bg-[#FAF8F5] rounded-lg border border-[#E8E8E8]">
+                            <div className="text-[10px] font-bold uppercase text-[#777777]">State</div>
+                            <div className="font-bold text-[#222222] mt-0.5">{activeUser.state || '—'}</div>
+                          </div>
+                          <div className="p-2.5 bg-[#FAF8F5] rounded-lg border border-[#E8E8E8]">
+                            <div className="text-[10px] font-bold uppercase text-[#777777]">Pincode</div>
+                            <div className="font-mono font-bold text-[#222222] mt-0.5">{activeUser.pincode || '—'}</div>
+                          </div>
+                          <div className="p-2.5 bg-[#FAF8F5] rounded-lg border border-[#E8E8E8]">
+                            <div className="text-[10px] font-bold uppercase text-[#777777]">Landmark</div>
+                            <div className="font-semibold text-[#222222] mt-0.5">{activeUser.landmark || '—'}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Timestamps & Orders Summary */}
+                      <div className="p-3 rounded-lg bg-[#FDE5F4]/35 border border-[#9F2089]/20 space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-[#666666] flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-[#9F2089]" />
+                            <span>Registered:</span>
+                          </span>
+                          <span className="font-semibold text-[#222222]">
+                            {activeUser.createdAt ? new Date(activeUser.createdAt).toLocaleString('en-IN') : '—'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-[#666666]">Last Profile Update:</span>
+                          <span className="font-bold text-[#038D63]">
+                            {activeUser.updatedAt ? new Date(activeUser.updatedAt).toLocaleString('en-IN') : '—'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] pt-1 border-t border-[#9F2089]/15">
+                          <span className="text-[#666666]">Orders Placed:</span>
+                          <span className="font-bold text-[#9F2089]">
+                            {activeUserOrders.length} orders (₹
+                            {activeUserOrders.reduce((s, o) => s + o.pricing.finalTotal, 0).toLocaleString('en-IN')})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </main>
 
       {/* ============================================================ */}

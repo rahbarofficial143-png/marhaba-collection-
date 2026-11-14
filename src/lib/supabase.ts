@@ -1,4 +1,4 @@
-import { Product, Banner, Category, Order, SupabaseConfig, ProductReview } from '../types';
+import { Product, Banner, Category, Order, SupabaseConfig, ProductReview, UserProfile } from '../types';
 import { getBuiltInSupabaseDefaults } from './storefrontDefaults';
 import { encodeMultiColorSingleLink, decodeMultiColorSingleLink } from './multiColorCodec';
 import {
@@ -9,6 +9,13 @@ import {
   compressReviewTextAsync,
   decompressReviewTextAsync
 } from './reviewCodec';
+import {
+  buildStableUserId,
+  encodeCompactUserAddress,
+  encodeCompactUserAddressAsync,
+  decodeCompactUserAddressSync,
+  decodeCompactUserAddressAsync
+} from './userCodec';
 
 export const SUPABASE_REVIEWS_SQL = `-- ==============================================================================
 -- MARHABA COLLECTION: PRODUCT REVIEWS TABLE SQL (Customer & Admin Reviews)
@@ -42,6 +49,37 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.product_reviews; EXCEPTION WHEN duplicate_object THEN NULL; END;
+  END IF;
+END $$;`;
+
+export const SUPABASE_USERS_SQL = `-- ==============================================================================
+-- MARHABA COLLECTION: STORE USERS TABLE SQL (Real-Time User Directory & Ultra-Low KB)
+-- Run this in Supabase SQL Editor to track registered users & profile/address updates
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS public.store_users (
+    id TEXT PRIMARY KEY,
+    phone TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    age TEXT DEFAULT '',
+    packed_data TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_store_users_phone ON public.store_users (phone);
+CREATE INDEX IF NOT EXISTS idx_store_users_updated_at ON public.store_users (updated_at DESC);
+
+ALTER TABLE public.store_users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow All Store Users" ON public.store_users;
+CREATE POLICY "Allow All Store Users" ON public.store_users
+    FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.store_users; EXCEPTION WHEN duplicate_object THEN NULL; END;
   END IF;
 END $$;`;
 
@@ -225,7 +263,25 @@ DROP POLICY IF EXISTS "Allow All Product Reviews" ON public.product_reviews;
 CREATE POLICY "Allow All Product Reviews" ON public.product_reviews FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
 
 -- ==============================================================================
--- 9. REALTIME PUBLICATION (Enables instant sync events on connected clients)
+-- 9. STORE USERS TABLE (Real-Time Users & Ultra-Compact Address Storage)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.store_users (
+    id TEXT PRIMARY KEY,
+    phone TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    age TEXT DEFAULT '',
+    packed_data TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_store_users_phone ON public.store_users (phone);
+CREATE INDEX IF NOT EXISTS idx_store_users_updated_at ON public.store_users (updated_at DESC);
+ALTER TABLE public.store_users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow All Store Users" ON public.store_users;
+CREATE POLICY "Allow All Store Users" ON public.store_users FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
+
+-- ==============================================================================
+-- 10. REALTIME PUBLICATION (Enables instant sync events on connected clients)
 -- ==============================================================================
 DO $$
 BEGIN
@@ -235,11 +291,12 @@ BEGIN
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.banners; EXCEPTION WHEN duplicate_object THEN NULL; END;
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.orders; EXCEPTION WHEN duplicate_object THEN NULL; END;
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.product_reviews; EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.store_users; EXCEPTION WHEN duplicate_object THEN NULL; END;
   END IF;
 END $$;
 
 -- ==============================================================================
--- SUCCESS: Tables & RLS are active! Add products, banners & reviews freely.
+-- SUCCESS: Tables & RLS are active! Add products, banners, reviews & users freely.
 -- ==============================================================================
 `;
 
@@ -378,6 +435,7 @@ export async function fetchStorefrontDataFromServer(): Promise<{
   products: Product[] | null;
   banners: Banner[] | null;
   reviews: ProductReview[] | null;
+  users: UserProfile[] | null;
 } | null> {
   try {
     const res = await fetch('/api/storefront-data', { cache: 'no-store' });
@@ -406,11 +464,17 @@ export async function fetchStorefrontDataFromServer(): Promise<{
         )
       : null;
 
+    const usersRaw = Array.isArray(data.users) ? data.users : null;
+    const decodedUsers = usersRaw
+      ? await Promise.all(usersRaw.map((row: any) => rowToUserAsync(row)))
+      : null;
+
     return {
       categories: Array.isArray(data.categories) ? data.categories.map(rowToCategory) : null,
       products: decodedProducts,
       banners: Array.isArray(data.banners) ? data.banners.map(rowToBanner) : null,
-      reviews: decodedReviews
+      reviews: decodedReviews,
+      users: decodedUsers
     };
   } catch (err) {
     console.warn('Could not fetch storefront fallback data from server', err);
@@ -659,6 +723,54 @@ export function rowToOrder(row: any): Order {
     estimatedDeliveryDate: row.estimated_delivery_date,
     items: row.items || []
   };
+}
+
+export function userToRow(u: UserProfile): Record<string, any> {
+  return {
+    id: buildStableUserId(u.phone, u.id),
+    phone: u.phone.trim(),
+    full_name: u.fullName.trim(),
+    age: (u.age || '').trim(),
+    packed_data: encodeCompactUserAddress(u),
+    created_at: u.createdAt || new Date().toISOString(),
+    updated_at: u.updatedAt || new Date().toISOString()
+  };
+}
+
+export function rowToUser(row: any): UserProfile {
+  const packed = typeof row.packed_data === 'string' ? row.packed_data : '';
+  const addr = decodeCompactUserAddressSync(packed);
+  return {
+    id: row.id,
+    fullName: row.full_name || 'Customer',
+    phone: row.phone || '',
+    age: row.age || '',
+    buildingOrVillage: addr.buildingOrVillage || row.building_or_village || '',
+    fullAddress: addr.fullAddress || row.full_address || '',
+    landmark: addr.landmark || row.landmark || undefined,
+    city: addr.city || row.city || '',
+    state: addr.state || row.state || '',
+    pincode: addr.pincode || row.pincode || '',
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || row.created_at || new Date().toISOString()
+  };
+}
+
+export async function rowToUserAsync(row: any): Promise<UserProfile> {
+  const base = rowToUser(row);
+  if (typeof row.packed_data === 'string' && row.packed_data.startsWith('uz1:')) {
+    const addr = await decodeCompactUserAddressAsync(row.packed_data);
+    return {
+      ...base,
+      buildingOrVillage: addr.buildingOrVillage || base.buildingOrVillage,
+      fullAddress: addr.fullAddress || base.fullAddress,
+      landmark: addr.landmark || base.landmark,
+      city: addr.city || base.city,
+      state: addr.state || base.state,
+      pincode: addr.pincode || base.pincode
+    };
+  }
+  return base;
 }
 
 export function reviewToRow(r: ProductReview, productId: string, categoryId?: string): Record<string, any> {
@@ -1102,6 +1214,56 @@ export async function deleteReviewFromSupabase(
   }
 
   return productSaved;
+}
+
+/**
+ * Fetch all registered users from public.store_users (returns null if table not created yet)
+ */
+export async function fetchUsersFromSupabase(config?: SupabaseConfig): Promise<UserProfile[] | null> {
+  try {
+    const cfg = config || getSupabaseConfig();
+    if (!cfg.url || !cfg.anonKey) return null;
+    const base = cleanSupabaseUrl(cfg.url);
+    const res = await fetch(`${base}/rest/v1/store_users?select=*&order=updated_at.desc`, {
+      method: 'GET',
+      headers: buildSupabaseHeaders(cfg.anonKey),
+      cache: 'no-store'
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return null;
+    return Promise.all(rows.map((row) => rowToUserAsync(row)));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Real-Time User Save / Profile Update into public.store_users (ultra-compact packed_data)
+ */
+export async function saveUserToSupabase(user: UserProfile, config?: SupabaseConfig): Promise<boolean> {
+  try {
+    const row = userToRow(user);
+    row.packed_data = await encodeCompactUserAddressAsync(user);
+    await upsertResilient('store_users', row, config);
+    return true;
+  } catch (err) {
+    console.warn('Could not sync user profile to Supabase store_users:', err);
+    return false;
+  }
+}
+
+/**
+ * Delete a user record from public.store_users
+ */
+export async function deleteUserFromSupabase(userId: string, config?: SupabaseConfig): Promise<boolean> {
+  try {
+    await postgrestRequest(`store_users?id=eq.${encodeURIComponent(userId)}`, 'DELETE', undefined, config);
+    return true;
+  } catch (err) {
+    console.error('Failed deleting user from Supabase', err);
+    return false;
+  }
 }
 
 /**

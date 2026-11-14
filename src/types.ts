@@ -146,6 +146,7 @@ export interface SupabaseConfig {
 }
 
 export interface UserProfile {
+  id?: string;
   fullName: string;
   phone: string;
   age: string;

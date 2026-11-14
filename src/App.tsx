@@ -35,8 +35,12 @@ import {
   saveReviewToSupabase,
   deleteReviewFromSupabase,
   mergeRemoteReviewsIntoProducts,
-  calculateProductRatingSummary
+  calculateProductRatingSummary,
+  fetchUsersFromSupabase,
+  saveUserToSupabase,
+  deleteUserFromSupabase
 } from './lib/supabase';
+import { buildStableUserId } from './lib/userCodec';
 
 // One-time cleanup of legacy preloaded demo items/images from localStorage
 try {
@@ -191,12 +195,13 @@ export default function App() {
 
       if (!cfg.url || !cfg.anonKey) return;
 
-      let [remoteCategories, remoteProducts, remoteBanners, remoteOrders, remoteReviews] = await Promise.all([
+      let [remoteCategories, remoteProducts, remoteBanners, remoteOrders, remoteReviews, remoteUsers] = await Promise.all([
         fetchCategoriesFromSupabase(cfg),
         fetchProductsFromSupabase(cfg),
         fetchBannersFromSupabase(cfg),
         fetchOrdersFromSupabase(cfg),
-        fetchReviewsFromSupabase(cfg)
+        fetchReviewsFromSupabase(cfg),
+        fetchUsersFromSupabase(cfg)
       ]);
 
       // Fallback to same-origin server proxy if browser direct fetch failed on mobile/network
@@ -207,6 +212,7 @@ export default function App() {
           remoteProducts = serverData.products;
           remoteBanners = serverData.banners;
           remoteReviews = remoteReviews ?? serverData.reviews;
+          remoteUsers = remoteUsers ?? serverData.users;
         }
       }
 
@@ -239,6 +245,10 @@ export default function App() {
       if (remoteOrders !== null) {
         setRecentOrders(remoteOrders);
       }
+
+      if (remoteUsers !== null) {
+        setStoreUsers(remoteUsers);
+      }
     } catch (err) {
       console.warn('Live Supabase sync error:', err);
     } finally {
@@ -261,10 +271,29 @@ export default function App() {
     return () => window.removeEventListener('marhaba-supabase-config-updated', handleConfigUpdated);
   }, []);
 
+  const syncLiveAdminFeeds = useCallback(async () => {
+    const cfg = getSupabaseConfig();
+    if (!cfg.url || !cfg.anonKey) return;
+    const [remoteUsers, remoteOrders] = await Promise.all([
+      fetchUsersFromSupabase(cfg),
+      fetchOrdersFromSupabase(cfg)
+    ]);
+    if (remoteUsers !== null) setStoreUsers(remoteUsers);
+    if (remoteOrders !== null) setRecentOrders(remoteOrders);
+  }, []);
+
+  useEffect(() => {
+    if (isAdminOpen) {
+      syncLiveAdminFeeds();
+    }
+  }, [isAdminOpen, syncLiveAdminFeeds]);
+
   useEffect(() => {
     const bgSync = () => {
       if (!isAdminOpenRef.current) {
         syncFromSupabase();
+      } else {
+        syncLiveAdminFeeds();
       }
     };
 
@@ -272,7 +301,7 @@ export default function App() {
       syncFromSupabase();
     }
 
-    // Poll every 10 seconds while visible on customer storefront so devices stay in sync
+    // Poll every 10 seconds while visible so customer & admin devices stay synced in real time
     const intervalId = setInterval(() => {
       if (document.visibilityState === 'visible') {
         bgSync();
@@ -309,7 +338,8 @@ export default function App() {
                   { event: '*', schema: 'public', table: 'categories' },
                   { event: '*', schema: 'public', table: 'banners' },
                   { event: '*', schema: 'public', table: 'orders' },
-                  { event: '*', schema: 'public', table: 'product_reviews' }
+                  { event: '*', schema: 'public', table: 'product_reviews' },
+                  { event: '*', schema: 'public', table: 'store_users' }
                 ]
               }
             },
@@ -388,17 +418,63 @@ export default function App() {
     return [];
   });
 
+  const [storeUsers, setStoreUsers] = useState<UserProfile[]>(() => {
+    try {
+      const stored = localStorage.getItem('marhaba_store_users');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error('Error loading stored users directory', e);
+    }
+    return userProfile ? [userProfile] : [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('marhaba_store_users', JSON.stringify(storeUsers));
+    } catch (e) {
+      console.error('Failed saving store users to localStorage', e);
+    }
+  }, [storeUsers]);
+
   const [isCreateAccountOpen, setIsCreateAccountOpen] = useState<boolean>(() => !userProfile);
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [profileInitialTab, setProfileInitialTab] = useState<'profile' | 'orders'>('profile');
 
   const handleSaveUserProfile = (profile: UserProfile) => {
-    setUserProfile(profile);
+    const stableId = buildStableUserId(profile.phone, userProfile?.id || profile.id);
+    const enrichedProfile: UserProfile = {
+      ...profile,
+      id: stableId,
+      createdAt: userProfile?.createdAt || profile.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    setUserProfile(enrichedProfile);
     try {
-      localStorage.setItem('marhaba_user_profile', JSON.stringify(profile));
+      localStorage.setItem('marhaba_user_profile', JSON.stringify(enrichedProfile));
     } catch (e) {
       console.error('Failed saving user profile', e);
     }
+
+    setStoreUsers((prev) => {
+      const idx = prev.findIndex((u) => buildStableUserId(u.phone, u.id) === stableId);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = enrichedProfile;
+        return next;
+      }
+      return [enrichedProfile, ...prev];
+    });
+
+    const cfg = getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      saveUserToSupabase(enrichedProfile, cfg).catch((err) =>
+        console.warn('Could not sync user account to Supabase store_users', err)
+      );
+    }
+
     setIsCreateAccountOpen(false);
   };
 
@@ -814,6 +890,15 @@ export default function App() {
     localStorage.setItem('marhaba_categories', JSON.stringify(INITIAL_CATEGORIES));
   };
 
+  const handleDeleteStoreUser = async (userId: string): Promise<boolean> => {
+    setStoreUsers((prev) => prev.filter((u) => buildStableUserId(u.phone, u.id) !== userId));
+    const cfg = getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      return await deleteUserFromSupabase(userId, cfg);
+    }
+    return false;
+  };
+
   // If Admin View is active, render full Admin Portal
   if (isAdminOpen) {
     return (
@@ -822,6 +907,7 @@ export default function App() {
         categories={categories}
         banners={banners}
         orders={recentOrders}
+        users={storeUsers}
         onAddProduct={handleAddProduct}
         onUpdateProduct={handleUpdateProduct}
         onDeleteProduct={handleDeleteProduct}
@@ -835,6 +921,7 @@ export default function App() {
         onDeleteOrder={handleDeleteOrder}
         onSaveProductReview={handleSaveProductReview}
         onDeleteProductReview={handleDeleteProductReview}
+        onDeleteUser={handleDeleteStoreUser}
         onResetToDemo={handleResetToDemo}
         onRefreshFromSupabase={syncFromSupabase}
         onClose={() => {
