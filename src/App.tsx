@@ -384,6 +384,19 @@ export default function App() {
     setIsCreateAccountOpen(false);
   };
 
+  const handleUserLogout = () => {
+    setUserProfile(null);
+    try {
+      localStorage.removeItem('marhaba_user_profile');
+      localStorage.removeItem('marhaba_my_order_ids');
+    } catch (e) {
+      console.error('Failed clearing user profile on logout', e);
+    }
+    setMyOrderIds([]);
+    setIsProfileOpen(false);
+    setIsCreateAccountOpen(true);
+  };
+
   // Modals & Drawers
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -935,6 +948,7 @@ export default function App() {
         userProfile={userProfile}
         onUpdateProfile={handleSaveUserProfile}
         onOpenCreateAccount={() => setIsCreateAccountOpen(true)}
+        onLogout={handleUserLogout}
         orders={myOrders}
       />
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, User, Package, Edit3, CheckCircle2, MapPin, Phone, Calendar,
-  Building2, Home, Truck, Clock, ShoppingBag, ChevronDown, ChevronUp, ShieldCheck
+  Building2, Home, Truck, Clock, ShoppingBag, ChevronDown, ChevronUp, ShieldCheck, LogOut
 } from 'lucide-react';
 import { Order, UserProfile } from '../types';
 
@@ -12,6 +12,7 @@ interface ProfileModalProps {
   userProfile: UserProfile | null;
   onUpdateProfile: (profile: UserProfile) => void;
   onOpenCreateAccount: () => void;
+  onLogout: () => void;
   orders: Order[];
 }
 
@@ -77,10 +78,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   userProfile,
   onUpdateProfile,
   onOpenCreateAccount,
+  onLogout,
   orders
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'orders'>(initialTab);
   const [isEditing, setIsEditing] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [expandedOrderIds, setExpandedOrderIds] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -101,6 +104,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     if (isOpen) {
       setActiveTab(initialTab);
       setIsEditing(false);
+      setConfirmLogout(false);
       setSaveNotice(null);
       setErrors({});
       if (userProfile) {
@@ -194,13 +198,30 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-white/85 hover:text-white rounded-full hover:bg-white/15"
-            aria-label="Close profile"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {userProfile && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('profile');
+                  setIsEditing(false);
+                  setConfirmLogout(true);
+                }}
+                className="px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold rounded-md flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                title="Logout from Account"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Logout</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 text-white/85 hover:text-white rounded-full hover:bg-white/15"
+              aria-label="Close profile"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Navigation Tabs: My Profile | My Orders */}
@@ -336,6 +357,49 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     <div className="flex items-center gap-1.5 text-[11px] text-[#038D63] font-medium pt-1">
                       <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                       <span>Automatically pre-fills your delivery address whenever you place an order.</span>
+                    </div>
+
+                    {/* Account Logout Bar */}
+                    <div className="pt-3 mt-2 border-t border-[#E8E8E8]">
+                      {confirmLogout ? (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg space-y-2.5">
+                          <div className="text-xs font-bold text-red-900">
+                            Kya aap apne account se Logout karna chahte hain?
+                          </div>
+                          <p className="text-[11px] text-red-700">
+                            Logout karne ke baad saved profile aur delivery address is device se clear ho jayega aur aap naya account bana sakenge.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmLogout(false);
+                                onLogout();
+                              }}
+                              className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-md flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <LogOut className="w-3.5 h-3.5" />
+                              <span>Yes, Logout</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmLogout(false)}
+                              className="px-3.5 py-1.5 bg-white border border-[#CCCCCC] hover:bg-slate-50 text-[#222222] font-semibold text-xs rounded-md cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmLogout(true)}
+                          className="w-full py-2.5 bg-white hover:bg-red-50 border border-red-200 text-red-600 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Logout Account</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (
