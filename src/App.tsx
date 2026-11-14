@@ -1034,7 +1034,7 @@ export default function App() {
           isInitialLoading && products.length === 0 ? (
             <div className="py-16 text-center max-w-md mx-auto space-y-3 bg-white p-8 rounded-lg border border-[#E8E8E8]">
               <img
-                src="/pwa-512x512.png"
+                src="/rz-icon-512.png"
                 alt="RAZVI SHOP"
                 className="w-20 h-20 rounded-full object-contain mx-auto shadow-md animate-pulse"
               />

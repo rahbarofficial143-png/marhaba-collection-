@@ -94,7 +94,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
               className="flex items-center gap-2.5 text-left focus:outline-none select-none cursor-pointer"
             >
               <img
-                src="/pwa-192x192.png"
+                src="/rz-icon-192.png"
                 alt="RAZVI SHOP"
                 className="w-10 h-10 rounded-full object-contain shrink-0 shadow-xs"
               />

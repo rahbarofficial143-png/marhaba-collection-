@@ -11,9 +11,9 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png'],
+        includeAssets: ['rz-icon.svg', 'rz-apple-touch-icon.png', 'rz-icon-192.png', 'rz-icon-512.png', 'rz-icon-maskable-512.png'],
         manifest: {
-          id: '/',
+          id: '/?app=razvi-shop',
           name: 'RAZVI SHOP',
           short_name: 'RAZVI SHOP',
           description:
@@ -27,19 +27,19 @@ export default defineConfig(() => {
           categories: ['shopping', 'lifestyle', 'fashion'],
           icons: [
             {
-              src: '/pwa-192x192.png',
+              src: '/rz-icon-192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-512x512.png',
+              src: '/rz-icon-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-maskable-512x512.png',
+              src: '/rz-icon-maskable-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
@@ -47,6 +47,8 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          skipWaiting: true,
+          clientsClaim: true,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           navigateFallback: 'index.html',
           navigateFallbackDenylist: [/^\/api\//],

@@ -64,7 +64,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
           <div className="flex items-center gap-3">
             <img
-              src="/pwa-192x192.png"
+              src="/rz-icon-192.png"
               alt="RAZVI SHOP"
               className="w-11 h-11 rounded-full object-contain shrink-0 shadow-inner"
             />

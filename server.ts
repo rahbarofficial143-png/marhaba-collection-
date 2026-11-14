@@ -143,6 +143,17 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '5mb' }));
 
+  app.use((req, res, next) => {
+    if (
+      req.path === '/manifest.webmanifest' ||
+      req.path === '/sw.js' ||
+      req.path === '/registerSW.js'
+    ) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+    next();
+  });
+
   // Return active Supabase configuration so all mobile phones & browsers auto-connect
   app.get('/api/supabase-config', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
