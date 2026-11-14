@@ -46,9 +46,17 @@ try {
 }
 
 export default function App() {
-  // Admin View State
+  // Admin View State (persists logged-in Admin session until Logout)
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    try {
+      return typeof sessionStorage !== 'undefined' && sessionStorage.getItem('marhaba_admin_auth') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState<boolean>(false);
+  const [adminToast, setAdminToast] = useState<string | null>(null);
 
   // Persistent Categories State
   const [categories, setCategories] = useState<Category[]>(() => {
@@ -655,7 +663,8 @@ export default function App() {
   };
 
   const handleTriggerAdminLogin = () => {
-    if (sessionStorage.getItem('marhaba_admin_auth') === 'true') {
+    if (isAdminAuthenticated || sessionStorage.getItem('marhaba_admin_auth') === 'true') {
+      setIsAdminAuthenticated(true);
       setIsAdminOpen(true);
     } else {
       setIsAdminLoginOpen(true);
@@ -664,6 +673,7 @@ export default function App() {
 
   const handleAdminLogout = () => {
     sessionStorage.removeItem('marhaba_admin_auth');
+    setIsAdminAuthenticated(false);
     setIsAdminOpen(false);
   };
 
@@ -729,11 +739,21 @@ export default function App() {
           setIsProfileOpen(true);
         }}
         onOpenProfile={() => {
-          setProfileInitialTab('profile');
-          setIsProfileOpen(true);
+          if (isAdminAuthenticated) {
+            setIsAdminOpen(true);
+          } else {
+            setProfileInitialTab('profile');
+            setIsProfileOpen(true);
+          }
         }}
-        userName={userProfile?.fullName}
+        userName={isAdminAuthenticated ? (userProfile?.fullName || 'Rahbar') : userProfile?.fullName}
       />
+
+      {adminToast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-[#1E1E2E] text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-xl border border-[#FECE57]/40 animate-fadeIn">
+          {adminToast}
+        </div>
+      )}
 
       {/* Hero Section (banners + dynamic category bubbles) */}
       {!filters.searchQuery && activeCategory === 'all' && (
@@ -920,7 +940,7 @@ export default function App() {
 
       {/* First-Launch Create Account Modal */}
       <CreateAccountModal
-        isOpen={isCreateAccountOpen && !isAdminLoginOpen}
+        isOpen={isCreateAccountOpen && !isAdminLoginOpen && !isAdminAuthenticated}
         onSaveAccount={handleSaveUserProfile}
         onTriggerAdminLogin={handleTriggerAdminLogin}
       />
@@ -941,8 +961,11 @@ export default function App() {
         isOpen={isAdminLoginOpen}
         onClose={() => setIsAdminLoginOpen(false)}
         onLoginSuccess={() => {
+          setIsAdminAuthenticated(true);
           setIsAdminLoginOpen(false);
-          setIsAdminOpen(true);
+          setIsAdminOpen(false);
+          setAdminToast('Admin logged in! Upar Profile par click karke Admin Panel kholein.');
+          setTimeout(() => setAdminToast(null), 5000);
         }}
       />
 

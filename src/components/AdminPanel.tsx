@@ -817,57 +817,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const totalRevenue = orders.reduce((sum, o) => sum + o.pricing.finalTotal, 0);
 
   return (
-    <div className="min-h-screen bg-[#F4F4F6] text-[#222222]">
+    <div className="min-h-screen bg-[#F4F4F6] text-[#222222] overflow-x-hidden w-full">
       {/* Floating Realtime Toast */}
       {toastMessage && (
-        <div className="fixed top-4 right-4 z-50 bg-[#1E1E2E] text-white px-4 py-3 rounded-lg shadow-2xl border border-white/20 flex items-center gap-2.5 text-xs font-semibold animate-fadeIn">
+        <div className="fixed top-4 right-3 left-3 sm:left-auto sm:right-4 z-50 bg-[#1E1E2E] text-white px-3.5 py-2.5 rounded-lg shadow-2xl border border-white/20 flex items-center gap-2 text-xs font-semibold animate-fadeIn">
           {toastMessage.type === 'error' ? (
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
           ) : (
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           )}
-          <span>{toastMessage.text}</span>
+          <span className="truncate sm:whitespace-normal">{toastMessage.text}</span>
         </div>
       )}
 
       {/* Admin Top Header */}
       <header className="sticky top-0 z-40 bg-[#9F2089] text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-1.5 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full hover:bg-white/20 transition-colors flex items-center gap-1.5 text-xs font-bold bg-white/10 px-3 py-1.5"
+              className="rounded-full hover:bg-white/20 transition-colors flex items-center gap-1 text-[10px] sm:text-xs font-bold bg-white/15 px-2 py-1 sm:px-3 sm:py-1.5 shrink-0 cursor-pointer"
+              title="Back to Storefront Preview"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to Storefront</span>
+              <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+              <span className="sm:hidden">Back</span>
+              <span className="hidden sm:inline">Back to Storefront</span>
             </button>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-editorial text-2xl font-bold tracking-tight text-white">
-                  Marhaba Collection
-                </span>
-                <span className="bg-[#FECE57] text-[#4B0013] text-[10px] font-black px-1.5 py-0.5 rounded uppercase">
-                  Admin & Inventory Suite
-                </span>
-              </div>
+            <div className="min-w-0 flex items-center gap-1.5">
+              <span className="font-editorial text-sm sm:text-2xl font-bold tracking-tight text-white truncate">
+                Marhaba Collection
+              </span>
+              <span className="bg-[#FECE57] text-[#4B0013] text-[8px] sm:text-[10px] font-black px-1 sm:px-1.5 py-0.5 rounded uppercase shrink-0">
+                <span className="sm:hidden">Admin</span>
+                <span className="hidden sm:inline">Admin &amp; Inventory Suite</span>
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            <span className="hidden md:inline-flex items-center gap-1.5 bg-black/20 text-[#FECE57] text-[11px] px-3 py-1 rounded-full font-mono font-bold border border-white/10">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <span className="hidden lg:inline-flex items-center gap-1.5 bg-black/20 text-[#FECE57] text-[11px] px-3 py-1 rounded-full font-mono font-bold border border-white/10">
               <User className="w-3.5 h-3.5 text-[#FECE57]" />
               <span>Owner: RAHBAR786</span>
             </span>
 
             <button
               onClick={() => setActiveTab('supabase')}
-              className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded font-bold transition-colors border border-white/20"
+              className="flex items-center gap-1 text-[10px] sm:text-xs bg-white/15 hover:bg-white/25 px-2 py-1 sm:px-3 sm:py-1.5 rounded font-bold transition-colors border border-white/20 shrink-0 cursor-pointer"
               title="Enter or edit Supabase URL & Anon Key"
             >
               <Database className="w-3.5 h-3.5 text-[#3ECF8E]" />
               <span className="hidden sm:inline">
-                {supabaseConfig.url && supabaseConfig.anonKey ? 'Supabase Keys' : 'Connect Supabase'}
+                {supabaseConfig.url && supabaseConfig.anonKey ? 'Supabase' : 'Connect Supabase'}
               </span>
             </button>
 
@@ -906,121 +907,123 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
             <button
               onClick={onClose}
-              className="px-3.5 py-1.5 bg-white text-[#9F2089] font-bold text-xs rounded shadow-xs hover:bg-slate-100 transition-colors"
+              className="px-2 py-1 sm:px-3.5 sm:py-1.5 bg-white text-[#9F2089] font-bold text-[10px] sm:text-xs rounded shadow-xs hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
             >
-              Live Store
+              <span className="sm:hidden">Store</span>
+              <span className="hidden sm:inline">Live Store</span>
             </button>
 
             <button
               onClick={onLogout}
-              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded shadow-xs flex items-center gap-1.5 transition-colors"
+              className="px-2 py-1 sm:px-3 sm:py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] sm:text-xs rounded shadow-xs flex items-center gap-1 transition-colors shrink-0 cursor-pointer"
               title="Logout from Admin Panel"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
               <span>Logout</span>
             </button>
           </div>
         </div>
 
         {/* Admin KPI Ribbon */}
-        <div className="bg-[#80182E] text-white/90 text-xs px-4 sm:px-6 py-2 border-t border-white/10">
-          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-6">
+        <div className="bg-[#80182E] text-white/90 text-[10px] sm:text-xs px-2.5 sm:px-6 py-1.5 sm:py-2 border-t border-white/10">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:gap-x-6">
               <div>
-                <span className="text-white/60">Active Products:</span>{' '}
+                <span className="text-white/65">Products:</span>{' '}
                 <strong className="text-white">{products.length}</strong>
               </div>
               <div>
-                <span className="text-white/60">Categories:</span>{' '}
+                <span className="text-white/65">Categories:</span>{' '}
                 <strong className="text-white">{categories.length}</strong>
               </div>
               <div>
-                <span className="text-white/60">Banners:</span>{' '}
+                <span className="text-white/65">Banners:</span>{' '}
                 <strong className="text-white">{banners.length}</strong>
               </div>
               <div>
-                <span className="text-white/60">UPI Phone:</span>{' '}
+                <span className="text-white/65">UPI:</span>{' '}
                 <strong className="text-[#FECE57] font-mono">9334808340</strong>
               </div>
               <div>
-                <span className="text-white/60">Orders:</span>{' '}
-                <strong className="text-white">{orders.length}</strong> (₹{totalRevenue.toLocaleString('en-IN')})
+                <span className="text-white/65">Orders:</span>{' '}
+                <strong className="text-white">{orders.length}</strong>{' '}
+                <span className="text-white/80">(₹{totalRevenue.toLocaleString('en-IN')})</span>
               </div>
             </div>
             <div className="text-[11px] text-white/70 italic hidden md:block">
-              Photoshop Eyedropper & Drag-Drop Uploader active
+              Photoshop Eyedropper &amp; Drag-Drop Uploader active
             </div>
           </div>
         </div>
 
         {/* Tab Navigation */}
         <div className="bg-white border-b border-[#E8E8E8] text-[#222222]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 flex gap-4 overflow-x-auto scrollbar-none">
+          <div className="max-w-7xl mx-auto px-2.5 sm:px-6 flex gap-2 sm:gap-5 overflow-x-auto scrollbar-none">
             <button
               onClick={() => setActiveTab('products')}
-              className={`py-3 px-2 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 transition-colors shrink-0 ${
+              className={`py-2.5 sm:py-3 px-1.5 sm:px-2 text-[11px] sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer ${
                 activeTab === 'products'
                   ? 'border-[#9F2089] text-[#9F2089]'
                   : 'border-transparent text-[#666666] hover:text-[#222222]'
               }`}
             >
-              <Package className="w-4 h-4" />
+              <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>Products ({products.length})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('categories')}
-              className={`py-3 px-2 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 transition-colors shrink-0 ${
+              className={`py-2.5 sm:py-3 px-1.5 sm:px-2 text-[11px] sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer ${
                 activeTab === 'categories'
                   ? 'border-[#9F2089] text-[#9F2089]'
                   : 'border-transparent text-[#666666] hover:text-[#222222]'
               }`}
             >
-              <FolderTree className="w-4 h-4" />
+              <FolderTree className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>Categories ({categories.length})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('banners')}
-              className={`py-3 px-2 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 transition-colors shrink-0 ${
+              className={`py-2.5 sm:py-3 px-1.5 sm:px-2 text-[11px] sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer ${
                 activeTab === 'banners'
                   ? 'border-[#9F2089] text-[#9F2089]'
                   : 'border-transparent text-[#666666] hover:text-[#222222]'
               }`}
             >
-              <ImageIcon className="w-4 h-4" />
-              <span>Hero Banners ({banners.length})</span>
+              <ImageIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>Banners ({banners.length})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('orders')}
-              className={`py-3 px-2 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 transition-colors shrink-0 ${
+              className={`py-2.5 sm:py-3 px-1.5 sm:px-2 text-[11px] sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer ${
                 activeTab === 'orders'
                   ? 'border-[#9F2089] text-[#9F2089]'
                   : 'border-transparent text-[#666666] hover:text-[#222222]'
               }`}
             >
-              <ShoppingBag className="w-4 h-4" />
+              <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>Orders ({orders.length})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('supabase')}
-              className={`py-3 px-2 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 transition-colors shrink-0 ${
+              className={`py-2.5 sm:py-3 px-1.5 sm:px-2 text-[11px] sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer ${
                 activeTab === 'supabase'
                   ? 'border-[#9F2089] text-[#9F2089]'
                   : 'border-transparent text-[#666666] hover:text-[#222222]'
               }`}
             >
-              <Database className="w-4 h-4 text-[#C59B27]" />
-              <span>Supabase SQL & Setup</span>
+              <Database className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#C59B27]" />
+              <span>Supabase SQL</span>
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Admin Body */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+      <main className="max-w-7xl mx-auto px-2.5 sm:px-6 py-4 sm:py-6">
         {/* Quick 2-Column Supabase URL & Anon Key Bar on other tabs when not yet configured */}
         {activeTab !== 'supabase' && (!supabaseConfig.url || !supabaseConfig.anonKey) && (
           <div className="mb-5 bg-white p-4 rounded-lg border-2 border-[#3ECF8E] shadow-xs space-y-3">
@@ -1102,20 +1105,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* ============================================================ */}
         {activeTab === 'products' && (
           <div className="space-y-4">
-            <div className="bg-white p-4 rounded-lg border border-[#E8E8E8] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-              <div className="flex flex-1 items-center gap-3">
+            <div className="bg-white p-3 sm:p-4 rounded-lg border border-[#E8E8E8] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 shadow-xs">
+              <div className="flex flex-1 items-center gap-2 min-w-0">
                 <input
                   type="text"
-                  placeholder="Search by title, color, cluster, or supplier..."
+                  placeholder="Search product, color, cluster..."
                   value={searchProductQuery}
                   onChange={(e) => setSearchProductQuery(e.target.value)}
-                  className="w-full max-w-sm px-3 py-2 text-xs border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                  className="flex-1 min-w-0 sm:max-w-sm px-2.5 sm:px-3 py-2 text-xs border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
                 />
 
                 <select
                   value={filterCategory}
                   onChange={(e) => setFilterCategory(e.target.value)}
-                  className="px-3 py-2 text-xs border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none cursor-pointer bg-white"
+                  className="px-2 sm:px-3 py-2 text-xs border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none cursor-pointer bg-white max-w-[125px] sm:max-w-none shrink-0"
                 >
                   <option value="all">All Categories</option>
                   {categories.map((c) => (
@@ -1126,7 +1129,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               <button
                 onClick={handleOpenAddProduct}
-                className="px-4 py-2 bg-[#9F2089] hover:bg-[#80182E] text-white text-xs font-bold rounded shadow-xs flex items-center justify-center gap-2 transition-all active:scale-98"
+                className="px-4 py-2 bg-[#9F2089] hover:bg-[#80182E] text-white text-xs font-bold rounded shadow-xs flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add New Product</span>
@@ -1136,55 +1139,60 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="bg-white rounded-lg border border-[#E8E8E8] overflow-hidden shadow-xs">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-[#FAF8F5] text-[#554243] font-bold border-b border-[#E8E8E8] uppercase tracking-wider text-[11px]">
+                  <thead className="bg-[#FAF8F5] text-[#554243] font-bold border-b border-[#E8E8E8] uppercase tracking-wider text-[10px] sm:text-[11px]">
                     <tr>
-                      <th className="py-3 px-4">Product</th>
-                      <th className="py-3 px-4">Category</th>
-                      <th className="py-3 px-4">Color</th>
-                      <th className="py-3 px-4">Price / MRP</th>
-                      <th className="py-3 px-4">Discount</th>
-                      <th className="py-3 px-4">Provenance / Supplier</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
+                      <th className="py-2.5 px-3 sm:py-3 sm:px-4">Product</th>
+                      <th className="hidden sm:table-cell py-3 px-4">Category</th>
+                      <th className="hidden md:table-cell py-3 px-4">Color</th>
+                      <th className="hidden sm:table-cell py-3 px-4">Price / MRP</th>
+                      <th className="hidden md:table-cell py-3 px-4">Discount</th>
+                      <th className="hidden lg:table-cell py-3 px-4">Provenance / Supplier</th>
+                      <th className="py-2.5 px-3 sm:py-3 sm:px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EFEAE2]">
                     {filteredProducts.map((p) => (
                       <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
+                        <td className="py-2.5 px-3 sm:py-3 sm:px-4">
+                          <div className="flex items-center gap-2.5 sm:gap-3">
                             {p.images[0] ? (
                               <img
                                 src={p.images[0]}
                                 alt={p.title}
-                                className="w-12 h-14 object-cover rounded border border-[#E8E8E8] shrink-0"
+                                className="w-11 h-13 sm:w-12 sm:h-14 object-cover rounded border border-[#E8E8E8] shrink-0"
                                 referrerPolicy="no-referrer"
                               />
                             ) : (
-                              <div className="w-12 h-14 rounded border border-[#E8E8E8] bg-[#FAF8F5] flex items-center justify-center shrink-0">
+                              <div className="w-11 h-13 sm:w-12 sm:h-14 rounded border border-[#E8E8E8] bg-[#FAF8F5] flex items-center justify-center shrink-0">
                                 <Package className="w-5 h-5 text-[#CCCCCC]" />
                               </div>
                             )}
-                            <div className="min-w-0 max-w-xs">
-                              <div className="font-bold text-[#222222] truncate">{p.title}</div>
-                              <div className="text-[11px] text-[#666666] truncate mt-0.5">
-                                {p.fabric} · {p.colorVariants && p.colorVariants.length > 1 ? `${p.colorVariants.length} Colors (1 Link)` : `${p.images.length} Image`} ·{' '}
+                            <div className="min-w-0 max-w-[180px] xs:max-w-[220px] sm:max-w-xs">
+                              <div className="font-bold text-[#222222] truncate text-xs">{p.title}</div>
+                              <div className="text-[10px] sm:text-[11px] text-[#666666] truncate mt-0.5">
+                                {p.colorVariants && p.colorVariants.length > 1 ? `${p.colorVariants.length} Colors (1 Link)` : `${p.images.length} Image`} ·{' '}
                                 <span className="font-mono text-[#038D63] font-semibold">
                                   {getSupabaseEncodedPayloadKb(
                                     encodeMultiColorSingleLink(p.colorVariants, p.images, p.color, p.colorHex)
                                   )} KB
                                 </span>
                               </div>
+                              <div className="sm:hidden flex items-center gap-2 mt-0.5 text-[11px]">
+                                <span className="font-extrabold text-[#222222]">₹{p.price.toLocaleString('en-IN')}</span>
+                                <span className="text-[10px] text-[#888888] line-through">₹{p.originalPrice.toLocaleString('en-IN')}</span>
+                                <span className="text-[10px] font-bold text-[#9F2089]">{p.discountPercent}% OFF</span>
+                              </div>
                             </div>
                           </div>
                         </td>
 
-                        <td className="py-3 px-4">
+                        <td className="hidden sm:table-cell py-3 px-4">
                           <span className="px-2 py-0.5 bg-[#FAF8F5] text-[#80182E] border border-[#EFEAE2] rounded text-[11px] font-semibold">
                             {p.categoryLabel || p.category}
                           </span>
                         </td>
 
-                        <td className="py-3 px-4">
+                        <td className="hidden md:table-cell py-3 px-4">
                           {p.colorVariants && p.colorVariants.length > 1 ? (
                             <div className="space-y-1">
                               <div className="flex items-center -space-x-1">
@@ -1212,7 +1220,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           )}
                         </td>
 
-                        <td className="py-3 px-4">
+                        <td className="hidden sm:table-cell py-3 px-4">
                           <div className="font-extrabold text-[#222222] text-sm tabular-nums">
                             ₹{p.price.toLocaleString('en-IN')}
                           </div>
@@ -1221,13 +1229,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </div>
                         </td>
 
-                        <td className="py-3 px-4">
+                        <td className="hidden md:table-cell py-3 px-4">
                           <span className="px-1.5 py-0.5 bg-[#9F2089]/10 text-[#9F2089] rounded font-bold text-xs">
                             {p.discountPercent}% OFF
                           </span>
                         </td>
 
-                        <td className="py-3 px-4">
+                        <td className="hidden lg:table-cell py-3 px-4">
                           <div className="font-semibold text-[#C59B27] text-[11px] uppercase">
                             {p.provenanceTag}
                           </div>
