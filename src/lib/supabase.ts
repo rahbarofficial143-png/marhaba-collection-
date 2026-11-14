@@ -1,6 +1,14 @@
 import { Product, Banner, Category, Order, SupabaseConfig, ProductReview } from '../types';
 import { getBuiltInSupabaseDefaults } from './storefrontDefaults';
 import { encodeMultiColorSingleLink, decodeMultiColorSingleLink } from './multiColorCodec';
+import {
+  encodeCompactReviewsList,
+  encodeCompactReviewsListAsync,
+  decodeCompactReviewsListSync,
+  decodeCompactReviewsListAsync,
+  compressReviewTextAsync,
+  decompressReviewTextAsync
+} from './reviewCodec';
 
 export const SUPABASE_REVIEWS_SQL = `-- ==============================================================================
 -- MARHABA COLLECTION: PRODUCT REVIEWS TABLE SQL (Customer & Admin Reviews)
@@ -376,11 +384,33 @@ export async function fetchStorefrontDataFromServer(): Promise<{
     if (!res.ok) return null;
     const data = await res.json();
     if (!data?.configured) return null;
+    const productsRaw = Array.isArray(data.products) ? data.products : null;
+    const decodedProducts = productsRaw
+      ? await Promise.all(
+          productsRaw.map(async (row: any) => {
+            const p = rowToProduct(row);
+            p.reviews = await decodeCompactReviewsListAsync(row.reviews, p.id, p.category);
+            return p;
+          })
+        )
+      : null;
+
+    const reviewsRaw = Array.isArray(data.reviews) ? data.reviews : null;
+    const decodedReviews = reviewsRaw
+      ? await Promise.all(
+          reviewsRaw.map(async (row: any) => {
+            const r = rowToReview(row);
+            r.comment = await decompressReviewTextAsync(r.comment);
+            return r;
+          })
+        )
+      : null;
+
     return {
       categories: Array.isArray(data.categories) ? data.categories.map(rowToCategory) : null,
-      products: Array.isArray(data.products) ? data.products.map(rowToProduct) : null,
+      products: decodedProducts,
       banners: Array.isArray(data.banners) ? data.banners.map(rowToBanner) : null,
-      reviews: Array.isArray(data.reviews) ? data.reviews.map(rowToReview) : null
+      reviews: decodedReviews
     };
   } catch (err) {
     console.warn('Could not fetch storefront fallback data from server', err);
@@ -499,7 +529,7 @@ export function productToRow(p: Product): Record<string, any> {
     featured: p.featured ?? false,
     available_sizes: p.availableSizes || ['Free Size (Unstitched)'],
     description: p.description,
-    reviews: p.reviews || []
+    reviews: encodeCompactReviewsList(p.reviews)
   };
 }
 
@@ -543,7 +573,7 @@ export function rowToProduct(row: any): Product {
     featured: Boolean(row.featured),
     availableSizes: Array.isArray(row.available_sizes) ? row.available_sizes : ['Free Size'],
     description: row.description || '',
-    reviews: Array.isArray(row.reviews) ? row.reviews : []
+    reviews: decodeCompactReviewsListSync(row.reviews, row.id, row.category)
   };
 }
 
@@ -820,7 +850,14 @@ async function fetchTableWithFallback(
  */
 export async function fetchProductsFromSupabase(config?: SupabaseConfig): Promise<Product[] | null> {
   const rows = await fetchTableWithFallback('products', 'created_at.desc', config);
-  return rows ? rows.map(rowToProduct) : null;
+  if (!rows) return null;
+  return Promise.all(
+    rows.map(async (row) => {
+      const p = rowToProduct(row);
+      p.reviews = await decodeCompactReviewsListAsync(row.reviews, p.id, p.category);
+      return p;
+    })
+  );
 }
 
 /**
@@ -869,6 +906,7 @@ export async function saveProductToSupabase(product: Product, config?: SupabaseC
     }
 
     const row = productToRow(product);
+    row.reviews = await encodeCompactReviewsListAsync(product.reviews);
     await upsertResilient('products', row, config);
     return true;
   } catch (err) {
@@ -986,47 +1024,81 @@ export async function fetchReviewsFromSupabase(config?: SupabaseConfig): Promise
     });
     if (!res.ok) return null;
     const rows = await res.json();
-    return Array.isArray(rows) ? rows.map(rowToReview) : null;
+    if (!Array.isArray(rows)) return null;
+    return Promise.all(
+      rows.map(async (row) => {
+        const rev = rowToReview(row);
+        rev.comment = await decompressReviewTextAsync(rev.comment);
+        return rev;
+      })
+    );
   } catch {
     return null;
   }
 }
 
+async function patchProductReviewsOnly(
+  updatedProduct: Product,
+  config?: SupabaseConfig
+): Promise<boolean> {
+  try {
+    const compactReviews = await encodeCompactReviewsListAsync(updatedProduct.reviews);
+    const updatedRows = await postgrestRequest(
+      `products?id=eq.${encodeURIComponent(updatedProduct.id)}`,
+      'PATCH',
+      {
+        reviews: compactReviews,
+        rating: updatedProduct.rating,
+        review_count: updatedProduct.reviewCount
+      },
+      config
+    );
+    if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+      return true;
+    }
+  } catch {
+    // Fallback to full upsert below if PATCH failed or product doesn't exist yet
+  }
+  return await saveProductToSupabase(updatedProduct, config);
+}
+
 /**
- * Dual-sync Review Save (Upserts into public.product_reviews if present AND updates products.reviews JSONB)
+ * Ultra-low KB Dual-sync Review Save:
+ * - Compresses comment text (rz1: when smaller) in public.product_reviews
+ * - Patches ONLY compact packed strings (rc1/rz2 ~0.03-0.06 KB) into products.reviews JSONB
  */
 export async function saveReviewToSupabase(
   review: ProductReview,
   updatedProduct: Product,
   config?: SupabaseConfig
 ): Promise<boolean> {
-  const productSaved = await saveProductToSupabase(updatedProduct, config);
+  const productSaved = await patchProductReviewsOnly(updatedProduct, config);
 
-  // Also write to dedicated public.product_reviews table if the SQL table exists
   try {
     const row = reviewToRow(review, updatedProduct.id, updatedProduct.category);
+    row.comment = await compressReviewTextAsync(review.comment);
     await upsertResilient('product_reviews', row, config);
   } catch {
-    // Table may not be created yet; products.reviews JSONB already guarantees full persistence
+    // Table may not be created yet; products.reviews compact JSONB already guarantees full persistence
   }
 
   return productSaved;
 }
 
 /**
- * Dual-sync Review Delete (Deletes from public.product_reviews AND updates products.reviews JSONB)
+ * Dual-sync Review Delete (Deletes from public.product_reviews AND lightweight PATCHes products.reviews)
  */
 export async function deleteReviewFromSupabase(
   reviewId: string,
   updatedProduct: Product,
   config?: SupabaseConfig
 ): Promise<boolean> {
-  const productSaved = await saveProductToSupabase(updatedProduct, config);
+  const productSaved = await patchProductReviewsOnly(updatedProduct, config);
 
   try {
     await postgrestRequest(`product_reviews?id=eq.${encodeURIComponent(reviewId)}`, 'DELETE', undefined, config);
   } catch {
-    // Table may not be created yet; products.reviews JSONB already synced
+    // Table may not be created yet; products.reviews compact JSONB already synced
   }
 
   return productSaved;
@@ -1079,9 +1151,15 @@ export async function batchSyncAllToSupabase(
       await upsertResilient('banners', bannerRows, cfg);
     }
 
-    // 3. Sync Products
+    // 3. Sync Products (with ultra-compact packed reviews)
     if (products.length > 0) {
-      const prodRows = products.map(productToRow);
+      const prodRows = await Promise.all(
+        products.map(async (p) => {
+          const row = productToRow(p);
+          row.reviews = await encodeCompactReviewsListAsync(p.reviews);
+          return row;
+        })
+      );
       await upsertResilient('products', prodRows, cfg);
     }
 

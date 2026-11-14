@@ -8,6 +8,7 @@ import {
 import { Product, Banner, Order, Category, SupabaseConfig, ProductColorVariant, ProductReview } from '../types';
 import { ImageColorPicker } from './ImageColorPicker';
 import { encodeMultiColorSingleLink, getSupabaseEncodedPayloadKb } from '../lib/multiColorCodec';
+import { createCompactReviewId, getCompactReviewKb } from '../lib/reviewCodec';
 import { 
   SUPABASE_SQL_SCHEMA, 
   SUPABASE_REVIEWS_SQL,
@@ -896,7 +897,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     setReviewSaving(true);
     const reviewPayload: ProductReview = {
-      id: editingReviewId || `rev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: editingReviewId || createCompactReviewId(),
       productId: activeReviewProduct.id,
       categoryId: activeReviewProduct.category,
       userName: cleanName,
@@ -912,12 +913,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setReviewSaving(false);
     setIsReviewFormOpen(false);
     setEditingReviewId(null);
+    const reviewKb = getCompactReviewKb(reviewPayload).toFixed(2);
     showToast(
       synced
         ? editingReviewId
-          ? 'Review updated & synced to Supabase!'
-          : 'New customer review added & synced to Supabase!'
-        : 'Review saved locally! Connect Supabase or run Reviews SQL for cloud sync.',
+          ? `Review updated (${reviewKb} KB) & synced to Supabase!`
+          : `Review added (${reviewKb} KB) & synced to Supabase!`
+        : `Review saved locally (${reviewKb} KB)! Connect Supabase for cloud sync.`,
       synced ? 'success' : 'info'
     );
   };
@@ -927,7 +929,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!file) return;
     setReviewImgCompressing(true);
     try {
-      const compressed = await compressImageFile(file, 450, 450, 0.6, 12);
+      const compressed = await compressImageFile(file, 360, 360, 0.55, 6);
       setReviewForm((prev) => ({ ...prev, reviewImage: compressed.dataUrl }));
       showToast(`Review photo compressed (${compressed.sizeKb.toFixed(1)} KB)`);
     } catch {
@@ -2432,6 +2434,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 )}
                                 <span className="text-[11px] text-[#777777]">
                                   · {rev.location || 'India'} · {rev.date}
+                                </span>
+                                <span className="text-[10px] font-mono font-bold text-[#038D63] bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                  {getCompactReviewKb(rev).toFixed(2)} KB
                                 </span>
                               </div>
 

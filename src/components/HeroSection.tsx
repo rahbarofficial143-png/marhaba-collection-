@@ -117,15 +117,19 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       {/* Hero Carousel Banner & Trust Strip */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
         {current && (
-          <div className="relative rounded-xl overflow-hidden shadow-sm bg-gradient-to-r from-[#9F2089] to-[#80182E] text-white">
-            <div className="grid grid-cols-1 md:grid-cols-12 min-h-[220px] sm:min-h-[280px] items-center">
-              {/* Left Content */}
-              <div className="md:col-span-7 p-6 sm:p-10 space-y-3 z-10">
-                <div className="inline-block bg-[#FECE57] text-[#4B0013] text-[11px] font-black px-2.5 py-1 rounded shadow-xs tracking-wider uppercase">
+          <div className={`relative rounded-xl overflow-hidden shadow-sm bg-gradient-to-r ${current.bgGradient || 'from-[#9F2089] to-[#80182E]'} text-white`}>
+            <div className="grid grid-cols-1 md:grid-cols-12 items-center">
+              {/* Left / Top Text Content */}
+              <div
+                className={`md:col-span-7 px-4 pt-4 pb-2.5 sm:p-8 md:py-9 ${
+                  activeBanners.length > 1 ? 'md:pl-14 md:pr-5' : 'md:px-10'
+                } space-y-2 sm:space-y-3 z-10`}
+              >
+                <div className="inline-block bg-[#FECE57] text-[#4B0013] text-[10px] sm:text-[11px] font-black px-2.5 py-0.5 sm:py-1 rounded shadow-xs tracking-wider uppercase">
                   {current.badgeText}
                 </div>
 
-                <h1 className="text-2xl sm:text-4xl font-black leading-tight tracking-tight text-white drop-shadow-xs font-editorial">
+                <h1 className="text-xl sm:text-3xl lg:text-4xl font-black leading-snug sm:leading-tight tracking-tight text-white drop-shadow-xs font-editorial">
                   {current.title}
                 </h1>
 
@@ -133,45 +137,50 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   {current.subtitle}
                 </p>
 
-                <div className="pt-2 flex items-center gap-3">
+                <div className="pt-1 sm:pt-2 flex flex-wrap items-center gap-2 sm:gap-3">
                   <button
                     onClick={() => onExploreCategory(current.categoryLink)}
-                    className="px-5 py-2.5 bg-white text-[#9F2089] hover:bg-[#FAF8F5] text-xs sm:text-sm font-bold rounded shadow-md transition-all active:scale-98"
+                    className="px-4 py-2 sm:px-5 sm:py-2.5 bg-white text-[#9F2089] hover:bg-[#FAF8F5] text-xs sm:text-sm font-bold rounded shadow-md transition-all active:scale-98 cursor-pointer"
                   >
                     {current.ctaText} →
                   </button>
 
                   <button
                     onClick={onOpenArtisans}
-                    className="px-4 py-2 bg-black/20 hover:bg-black/30 text-white text-xs font-semibold rounded border border-white/30 transition-colors"
+                    className="px-3.5 py-2 bg-black/20 hover:bg-black/30 text-white text-xs font-semibold rounded border border-white/30 transition-colors cursor-pointer"
                   >
                     Meet Direct Weavers
                   </button>
                 </div>
               </div>
 
-              {/* Right Image Showcase */}
-              <div className="md:col-span-5 h-48 md:h-full relative overflow-hidden">
+              {/* Right / Bottom Full Image Showcase (Zero Cropping on Phone & Desktop) */}
+              <div
+                className={`md:col-span-5 flex items-center justify-center px-3 pt-1 ${
+                  activeBanners.length > 1 ? 'pb-11 md:py-5 md:pr-14' : 'pb-4 md:py-5 md:pr-6'
+                } md:pl-2`}
+              >
                 {current.imageUrl && (
-                  <img
-                    src={current.imageUrl}
-                    alt={current.title}
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
+                  <div className="w-full flex items-center justify-center rounded-lg bg-black/15 p-1.5 sm:p-2 border border-white/15">
+                    <img
+                      src={current.imageUrl}
+                      alt={current.title}
+                      className="w-auto max-w-full max-h-[260px] sm:max-h-[300px] md:max-h-[320px] h-auto object-contain rounded-md shadow-md mx-auto"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-r from-[#9F2089] via-transparent to-transparent md:block hidden" />
               </div>
             </div>
 
-            {/* Carousel Arrows */}
+            {/* Desktop Side Arrows (Safe Gutters) */}
             {activeBanners.length > 1 && (
               <>
                 <button
                   onClick={() =>
                     setCurrentSlide((prev) => (prev - 1 + activeBanners.length) % activeBanners.length)
                   }
-                  className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition-colors"
+                  className="hidden md:flex absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white items-center justify-center transition-colors z-20 cursor-pointer"
                   aria-label="Previous banner"
                 >
                   <ChevronLeft className="w-5 h-5" />
@@ -181,24 +190,60 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   onClick={() =>
                     setCurrentSlide((prev) => (prev + 1) % activeBanners.length)
                   }
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition-colors"
+                  className="hidden md:flex absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white items-center justify-center transition-colors z-20 cursor-pointer"
                   aria-label="Next banner"
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
 
-                {/* Dots */}
-                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20">
+                {/* Desktop Bottom Dots */}
+                <div className="hidden md:flex absolute bottom-3 left-1/2 -translate-x-1/2 items-center gap-1.5 z-20">
                   {activeBanners.map((_, idx) => (
                     <button
                       key={idx}
                       onClick={() => setCurrentSlide(idx)}
-                      className={`h-2 rounded-full transition-all ${
+                      className={`h-2 rounded-full transition-all cursor-pointer ${
                         currentSlide === idx ? 'w-6 bg-[#FECE57]' : 'w-2 bg-white/50'
                       }`}
                       aria-label={`Go to slide ${idx + 1}`}
                     />
                   ))}
+                </div>
+
+                {/* Mobile Clean Bottom Bar (Arrows + Dots — never overlaps buttons or photo) */}
+                <div className="md:hidden absolute bottom-2 inset-x-3 flex items-center justify-between z-20">
+                  <button
+                    onClick={() =>
+                      setCurrentSlide((prev) => (prev - 1 + activeBanners.length) % activeBanners.length)
+                    }
+                    className="w-7 h-7 rounded-full bg-black/45 hover:bg-black/65 text-white flex items-center justify-center transition-colors cursor-pointer"
+                    aria-label="Previous banner"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    {activeBanners.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCurrentSlide(idx)}
+                        className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                          currentSlide === idx ? 'w-5 bg-[#FECE57]' : 'w-2 bg-white/55'
+                        }`}
+                        aria-label={`Go to slide ${idx + 1}`}
+                      />
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      setCurrentSlide((prev) => (prev + 1) % activeBanners.length)
+                    }
+                    className="w-7 h-7 rounded-full bg-black/45 hover:bg-black/65 text-white flex items-center justify-center transition-colors cursor-pointer"
+                    aria-label="Next banner"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
               </>
             )}

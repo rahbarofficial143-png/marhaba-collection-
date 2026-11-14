@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Product, ProductReview, UserProfile } from '../types';
 import { compressImageFile } from '../lib/imageCompressor';
+import { createCompactReviewId } from '../lib/reviewCodec';
 
 interface ProductDetailModalProps {
   product: Product | null;
@@ -141,7 +142,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     }
 
     const newReview: ProductReview = {
-      id: `rev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: createCompactReviewId(),
       productId: product.id,
       categoryId: product.category,
       userName: cleanName,
@@ -703,7 +704,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                                 if (!file) return;
                                 setReviewCompressing(true);
                                 try {
-                                  const res = await compressImageFile(file, 450, 450, 0.6, 12);
+                                  const res = await compressImageFile(file, 360, 360, 0.55, 6);
                                   setReviewImage(res.dataUrl);
                                 } finally {
                                   setReviewCompressing(false);
