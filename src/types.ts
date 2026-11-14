@@ -25,6 +25,19 @@ export interface ProductColorVariant {
   image: string;
 }
 
+export interface ProductReview {
+  id: string;
+  productId?: string;
+  categoryId?: string;
+  userName: string;
+  rating: number;
+  date: string;
+  comment: string;
+  verified: boolean;
+  location: string;
+  reviewImage?: string;
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -58,16 +71,7 @@ export interface Product {
   featured?: boolean;
   availableSizes?: string[];
   description: string;
-  reviews?: {
-    id: string;
-    userName: string;
-    rating: number;
-    date: string;
-    comment: string;
-    verified: boolean;
-    location: string;
-    reviewImage?: string;
-  }[];
+  reviews?: ProductReview[];
 }
 
 export interface ArtisanHub {

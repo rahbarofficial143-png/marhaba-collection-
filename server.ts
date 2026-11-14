@@ -199,21 +199,23 @@ async function startServer() {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     const cfg = getEffectiveConfig();
     if (!cfg) {
-      res.json({ configured: false, categories: null, products: null, banners: null });
+      res.json({ configured: false, categories: null, products: null, banners: null, reviews: null });
       return;
     }
 
-    const [categories, products, banners] = await Promise.all([
+    const [categories, products, banners, reviews] = await Promise.all([
       fetchTableFromSupabase(cfg, 'categories', 'created_at.asc'),
       fetchTableFromSupabase(cfg, 'products', 'created_at.desc'),
-      fetchTableFromSupabase(cfg, 'banners', 'created_at.asc')
+      fetchTableFromSupabase(cfg, 'banners', 'created_at.asc'),
+      fetchTableFromSupabase(cfg, 'product_reviews', 'created_at.desc')
     ]);
 
     res.json({
       configured: true,
       categories,
       products,
-      banners
+      banners,
+      reviews
     });
   });
 

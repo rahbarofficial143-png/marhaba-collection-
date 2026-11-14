@@ -1,6 +1,41 @@
-import { Product, Banner, Category, Order, SupabaseConfig } from '../types';
+import { Product, Banner, Category, Order, SupabaseConfig, ProductReview } from '../types';
 import { getBuiltInSupabaseDefaults } from './storefrontDefaults';
 import { encodeMultiColorSingleLink, decodeMultiColorSingleLink } from './multiColorCodec';
+
+export const SUPABASE_REVIEWS_SQL = `-- ==============================================================================
+-- MARHABA COLLECTION: PRODUCT REVIEWS TABLE SQL (Customer & Admin Reviews)
+-- Run this in Supabase SQL Editor to enable dedicated public.product_reviews table
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS public.product_reviews (
+    id TEXT PRIMARY KEY DEFAULT ('rev_' || substr(md5(random()::text), 1, 8)),
+    product_id TEXT NOT NULL,
+    category_id TEXT DEFAULT 'sarees',
+    user_name TEXT NOT NULL,
+    location TEXT DEFAULT 'India',
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT NOT NULL,
+    review_image TEXT,
+    verified BOOLEAN DEFAULT true,
+    date TEXT NOT NULL DEFAULT to_char(now(), 'DD Mon YYYY'),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_reviews_product_id ON public.product_reviews (product_id);
+CREATE INDEX IF NOT EXISTS idx_product_reviews_category_id ON public.product_reviews (category_id);
+
+ALTER TABLE public.product_reviews ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow All Product Reviews" ON public.product_reviews;
+CREATE POLICY "Allow All Product Reviews" ON public.product_reviews
+    FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.product_reviews; EXCEPTION WHEN duplicate_object THEN NULL; END;
+  END IF;
+END $$;`;
 
 export const SUPABASE_SQL_SCHEMA = `-- ==============================================================================
 -- MARHABA COLLECTION: COMPLETE PRODUCTION SUPABASE DATABASE SCHEMA & SEED DATA
@@ -160,7 +195,29 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- ==============================================================================
--- 8. REALTIME PUBLICATION (Enables instant sync events on connected clients)
+-- 8. PRODUCT REVIEWS TABLE (Customer & Admin Managed Product Reviews)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.product_reviews (
+    id TEXT PRIMARY KEY DEFAULT ('rev_' || substr(md5(random()::text), 1, 8)),
+    product_id TEXT NOT NULL,
+    category_id TEXT DEFAULT 'sarees',
+    user_name TEXT NOT NULL,
+    location TEXT DEFAULT 'India',
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT NOT NULL,
+    review_image TEXT,
+    verified BOOLEAN DEFAULT true,
+    date TEXT NOT NULL DEFAULT to_char(now(), 'DD Mon YYYY'),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_product_reviews_product_id ON public.product_reviews (product_id);
+CREATE INDEX IF NOT EXISTS idx_product_reviews_category_id ON public.product_reviews (category_id);
+ALTER TABLE public.product_reviews ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow All Product Reviews" ON public.product_reviews;
+CREATE POLICY "Allow All Product Reviews" ON public.product_reviews FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
+
+-- ==============================================================================
+-- 9. REALTIME PUBLICATION (Enables instant sync events on connected clients)
 -- ==============================================================================
 DO $$
 BEGIN
@@ -169,11 +226,12 @@ BEGIN
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.products; EXCEPTION WHEN duplicate_object THEN NULL; END;
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.banners; EXCEPTION WHEN duplicate_object THEN NULL; END;
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.orders; EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.product_reviews; EXCEPTION WHEN duplicate_object THEN NULL; END;
   END IF;
 END $$;
 
 -- ==============================================================================
--- SUCCESS: Tables & RLS are active! Add products & banners from Admin Panel.
+-- SUCCESS: Tables & RLS are active! Add products, banners & reviews freely.
 -- ==============================================================================
 `;
 
@@ -311,6 +369,7 @@ export async function fetchStorefrontDataFromServer(): Promise<{
   categories: Category[] | null;
   products: Product[] | null;
   banners: Banner[] | null;
+  reviews: ProductReview[] | null;
 } | null> {
   try {
     const res = await fetch('/api/storefront-data', { cache: 'no-store' });
@@ -320,7 +379,8 @@ export async function fetchStorefrontDataFromServer(): Promise<{
     return {
       categories: Array.isArray(data.categories) ? data.categories.map(rowToCategory) : null,
       products: Array.isArray(data.products) ? data.products.map(rowToProduct) : null,
-      banners: Array.isArray(data.banners) ? data.banners.map(rowToBanner) : null
+      banners: Array.isArray(data.banners) ? data.banners.map(rowToBanner) : null,
+      reviews: Array.isArray(data.reviews) ? data.reviews.map(rowToReview) : null
     };
   } catch (err) {
     console.warn('Could not fetch storefront fallback data from server', err);
@@ -569,6 +629,88 @@ export function rowToOrder(row: any): Order {
     estimatedDeliveryDate: row.estimated_delivery_date,
     items: row.items || []
   };
+}
+
+export function reviewToRow(r: ProductReview, productId: string, categoryId?: string): Record<string, any> {
+  return {
+    id: r.id,
+    product_id: r.productId || productId,
+    category_id: r.categoryId || categoryId || 'sarees',
+    user_name: r.userName,
+    location: r.location || 'India',
+    rating: Math.max(1, Math.min(5, Math.round(Number(r.rating || 5)))),
+    comment: r.comment,
+    review_image: r.reviewImage || null,
+    verified: Boolean(r.verified),
+    date: r.date || new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+  };
+}
+
+export function rowToReview(row: any): ProductReview {
+  return {
+    id: row.id,
+    productId: row.product_id,
+    categoryId: row.category_id,
+    userName: row.user_name || 'Verified Customer',
+    location: row.location || 'India',
+    rating: Number(row.rating || 5),
+    comment: row.comment || '',
+    reviewImage: row.review_image || undefined,
+    verified: row.verified ?? true,
+    date: row.date || 'Recently'
+  };
+}
+
+export function calculateProductRatingSummary(
+  reviews: ProductReview[],
+  fallbackRating = 4.8,
+  fallbackCount = 0
+): { rating: number; reviewCount: number } {
+  if (!reviews || reviews.length === 0) {
+    return { rating: fallbackRating, reviewCount: fallbackCount };
+  }
+  const sum = reviews.reduce((acc, r) => acc + Math.max(1, Math.min(5, Number(r.rating || 5))), 0);
+  return {
+    rating: Number((sum / reviews.length).toFixed(1)),
+    reviewCount: reviews.length
+  };
+}
+
+export function mergeRemoteReviewsIntoProducts(
+  products: Product[],
+  remoteReviews: ProductReview[] | null
+): Product[] {
+  if (!remoteReviews || remoteReviews.length === 0) {
+    return products;
+  }
+  const byProduct = new Map<string, ProductReview[]>();
+  for (const rev of remoteReviews) {
+    if (!rev.productId) continue;
+    const list = byProduct.get(rev.productId) || [];
+    list.push(rev);
+    byProduct.set(rev.productId, list);
+  }
+
+  return products.map((p) => {
+    const tableReviews = byProduct.get(p.id) || [];
+    if (tableReviews.length === 0) return p;
+
+    const mergedMap = new Map<string, ProductReview>();
+    for (const r of p.reviews || []) {
+      mergedMap.set(r.id, r);
+    }
+    for (const r of tableReviews) {
+      mergedMap.set(r.id, { ...r, productId: p.id, categoryId: r.categoryId || p.category });
+    }
+    const mergedList = Array.from(mergedMap.values());
+    const summary = calculateProductRatingSummary(mergedList, p.rating, p.reviewCount);
+    return {
+      ...p,
+      reviews: mergedList,
+      rating: summary.rating,
+      reviewCount: summary.reviewCount
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -827,6 +969,67 @@ export async function deleteOrderFromSupabase(orderId: string, config?: Supabase
     console.error('Failed deleting order from Supabase', err);
     return false;
   }
+}
+
+/**
+ * Fetch all product reviews from public.product_reviews (returns null if table is not yet created)
+ */
+export async function fetchReviewsFromSupabase(config?: SupabaseConfig): Promise<ProductReview[] | null> {
+  try {
+    const cfg = config || getSupabaseConfig();
+    if (!cfg.url || !cfg.anonKey) return null;
+    const base = cleanSupabaseUrl(cfg.url);
+    const res = await fetch(`${base}/rest/v1/product_reviews?select=*&order=created_at.desc`, {
+      method: 'GET',
+      headers: buildSupabaseHeaders(cfg.anonKey),
+      cache: 'no-store'
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return Array.isArray(rows) ? rows.map(rowToReview) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Dual-sync Review Save (Upserts into public.product_reviews if present AND updates products.reviews JSONB)
+ */
+export async function saveReviewToSupabase(
+  review: ProductReview,
+  updatedProduct: Product,
+  config?: SupabaseConfig
+): Promise<boolean> {
+  const productSaved = await saveProductToSupabase(updatedProduct, config);
+
+  // Also write to dedicated public.product_reviews table if the SQL table exists
+  try {
+    const row = reviewToRow(review, updatedProduct.id, updatedProduct.category);
+    await upsertResilient('product_reviews', row, config);
+  } catch {
+    // Table may not be created yet; products.reviews JSONB already guarantees full persistence
+  }
+
+  return productSaved;
+}
+
+/**
+ * Dual-sync Review Delete (Deletes from public.product_reviews AND updates products.reviews JSONB)
+ */
+export async function deleteReviewFromSupabase(
+  reviewId: string,
+  updatedProduct: Product,
+  config?: SupabaseConfig
+): Promise<boolean> {
+  const productSaved = await saveProductToSupabase(updatedProduct, config);
+
+  try {
+    await postgrestRequest(`product_reviews?id=eq.${encodeURIComponent(reviewId)}`, 'DELETE', undefined, config);
+  } catch {
+    // Table may not be created yet; products.reviews JSONB already synced
+  }
+
+  return productSaved;
 }
 
 /**

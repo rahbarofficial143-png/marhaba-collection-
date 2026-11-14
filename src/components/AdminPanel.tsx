@@ -3,13 +3,14 @@ import {
   Plus, Edit, Trash2, ArrowLeft, Image as ImageIcon, Package, 
   ShoppingBag, Check, X, RefreshCw, FolderTree, Database, 
   Copy, ExternalLink, ShieldCheck, CheckCircle2, AlertCircle, Zap, Upload, LogOut, User,
-  Eye, EyeOff, KeyRound, Link2
+  Eye, EyeOff, KeyRound, Link2, Star, MessageSquare
 } from 'lucide-react';
-import { Product, Banner, Order, Category, SupabaseConfig, ProductColorVariant } from '../types';
+import { Product, Banner, Order, Category, SupabaseConfig, ProductColorVariant, ProductReview } from '../types';
 import { ImageColorPicker } from './ImageColorPicker';
 import { encodeMultiColorSingleLink, getSupabaseEncodedPayloadKb } from '../lib/multiColorCodec';
 import { 
   SUPABASE_SQL_SCHEMA, 
+  SUPABASE_REVIEWS_SQL,
   getSupabaseConfig, 
   saveSupabaseConfig, 
   clearSupabaseConfig,
@@ -47,6 +48,8 @@ interface AdminPanelProps {
   onDeleteBanner: (bannerId: string) => void;
   onUpdateOrderStatus: (orderId: string, status: Order['status']) => void;
   onDeleteOrder: (orderId: string) => void;
+  onSaveProductReview: (productId: string, review: ProductReview) => Promise<boolean>;
+  onDeleteProductReview: (productId: string, reviewId: string) => Promise<boolean>;
   onResetToDemo: () => void;
   onRefreshFromSupabase?: () => void;
   onClose: () => void;
@@ -69,13 +72,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onDeleteBanner,
   onUpdateOrderStatus,
   onDeleteOrder,
+  onSaveProductReview,
+  onDeleteProductReview,
   onResetToDemo,
   onRefreshFromSupabase,
   onClose,
   onLogout
 }) => {
   const initialSupabaseCfg = getSupabaseConfig();
-  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'banners' | 'orders' | 'supabase'>(
+  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'banners' | 'orders' | 'reviews' | 'supabase'>(
     initialSupabaseCfg.url && initialSupabaseCfg.anonKey ? 'products' : 'supabase'
   );
   const [searchProductQuery, setSearchProductQuery] = useState('');
@@ -192,6 +197,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     confirmLabel: string;
     onConfirm: () => void;
   } | null>(null);
+
+  // Customer Reviews Manager State (Category -> Product -> Reviews)
+  const [selectedReviewCategory, setSelectedReviewCategory] = useState<string>('all');
+  const [selectedReviewProductId, setSelectedReviewProductId] = useState<string>(() => products[0]?.id || '');
+  const [isReviewFormOpen, setIsReviewFormOpen] = useState(false);
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const [reviewForm, setReviewForm] = useState({
+    userName: '',
+    location: 'India',
+    rating: 5,
+    comment: '',
+    verified: true,
+    reviewImage: '',
+    date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  });
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [reviewImgCompressing, setReviewImgCompressing] = useState(false);
+  const [showReviewsSqlBox, setShowReviewsSqlBox] = useState(false);
+  const [copiedReviewsSql, setCopiedReviewsSql] = useState(false);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToastMessage({ text, type });
@@ -814,6 +838,106 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setTimeout(() => setCopiedSchema(false), 2500);
   };
 
+  const handleCopyReviewsSql = () => {
+    navigator.clipboard.writeText(SUPABASE_REVIEWS_SQL);
+    setCopiedReviewsSql(true);
+    showToast('Reviews SQL copied to clipboard!');
+    setTimeout(() => setCopiedReviewsSql(false), 2500);
+  };
+
+  const totalReviewsCount = products.reduce(
+    (sum, p) => sum + (Array.isArray(p.reviews) ? p.reviews.length : 0),
+    0
+  );
+
+  const reviewCategoryProducts = products.filter(
+    (p) => selectedReviewCategory === 'all' || p.category === selectedReviewCategory
+  );
+
+  const activeReviewProduct =
+    reviewCategoryProducts.find((p) => p.id === selectedReviewProductId) ||
+    reviewCategoryProducts[0] ||
+    null;
+
+  const openAddReviewForm = () => {
+    setEditingReviewId(null);
+    setReviewForm({
+      userName: '',
+      location: 'Kishanganj, Bihar',
+      rating: 5,
+      comment: '',
+      verified: true,
+      reviewImage: '',
+      date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    });
+    setIsReviewFormOpen(true);
+  };
+
+  const openEditReviewForm = (rev: ProductReview) => {
+    setEditingReviewId(rev.id);
+    setReviewForm({
+      userName: rev.userName,
+      location: rev.location || 'India',
+      rating: rev.rating,
+      comment: rev.comment,
+      verified: rev.verified !== false,
+      reviewImage: rev.reviewImage || '',
+      date: rev.date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    });
+    setIsReviewFormOpen(true);
+  };
+
+  const handleAdminSaveReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeReviewProduct) return;
+    const cleanName = reviewForm.userName.trim();
+    const cleanComment = reviewForm.comment.trim();
+    if (!cleanName || !cleanComment) return;
+
+    setReviewSaving(true);
+    const reviewPayload: ProductReview = {
+      id: editingReviewId || `rev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      productId: activeReviewProduct.id,
+      categoryId: activeReviewProduct.category,
+      userName: cleanName,
+      location: reviewForm.location.trim() || 'India',
+      rating: Math.min(5, Math.max(1, Math.round(reviewForm.rating))),
+      comment: cleanComment,
+      verified: reviewForm.verified,
+      date: reviewForm.date.trim() || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      reviewImage: reviewForm.reviewImage.trim() || undefined
+    };
+
+    const synced = await onSaveProductReview(activeReviewProduct.id, reviewPayload);
+    setReviewSaving(false);
+    setIsReviewFormOpen(false);
+    setEditingReviewId(null);
+    showToast(
+      synced
+        ? editingReviewId
+          ? 'Review updated & synced to Supabase!'
+          : 'New customer review added & synced to Supabase!'
+        : 'Review saved locally! Connect Supabase or run Reviews SQL for cloud sync.',
+      synced ? 'success' : 'info'
+    );
+  };
+
+  const handleReviewImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setReviewImgCompressing(true);
+    try {
+      const compressed = await compressImageFile(file, 450, 450, 0.6, 12);
+      setReviewForm((prev) => ({ ...prev, reviewImage: compressed.dataUrl }));
+      showToast(`Review photo compressed (${compressed.sizeKb.toFixed(1)} KB)`);
+    } catch {
+      showToast('Photo compress nahi ho paya, URL paste karein.', 'error');
+    } finally {
+      setReviewImgCompressing(false);
+      e.target.value = '';
+    }
+  };
+
   const totalRevenue = orders.reduce((sum, o) => sum + o.pricing.finalTotal, 0);
 
   return (
@@ -1005,6 +1129,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             >
               <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>Orders ({orders.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('reviews')}
+              className={`py-2.5 sm:py-3 px-1.5 sm:px-2 text-[11px] sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer ${
+                activeTab === 'reviews'
+                  ? 'border-[#9F2089] text-[#9F2089]'
+                  : 'border-transparent text-[#666666] hover:text-[#222222]'
+              }`}
+            >
+              <Star className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
+              <span>Reviews ({totalReviewsCount})</span>
             </button>
 
             <button
@@ -1868,6 +2004,489 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <pre className="p-4 bg-[#1E1E2E] text-[#CDD6F4] text-xs font-mono rounded-lg overflow-x-auto max-h-96 leading-relaxed selection:bg-[#9F2089]">
                   {SUPABASE_SQL_SCHEMA}
                 </pre>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* TAB 6: CUSTOMER REVIEWS MANAGER (CATEGORY -> PRODUCT -> CRUD)*/}
+        {/* ============================================================ */}
+        {activeTab === 'reviews' && (
+          <div className="space-y-4">
+            {/* Header & Supabase SQL Toggle */}
+            <div className="bg-white p-4 rounded-lg border border-[#E8E8E8] shadow-xs space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                    <MessageSquare className="w-4 h-4 text-[#9F2089]" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-[#222222]">
+                      Customer Reviews Manager (Category-Wise)
+                    </h2>
+                    <p className="text-[11px] text-[#666666]">
+                      Category select karein → Product chunein → Reviews Add, Edit ya Delete karein (Supabase live sync)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowReviewsSqlBox((prev) => !prev)}
+                    className="px-3 py-1.5 bg-[#FAF8F5] hover:bg-[#FDE5F4] border border-[#9F2089]/30 text-[#9F2089] text-xs font-bold rounded flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Database className="w-3.5 h-3.5" />
+                    <span>{showReviewsSqlBox ? 'Hide Reviews SQL' : 'Supabase Reviews SQL'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {showReviewsSqlBox && (
+                <div className="pt-2 border-t border-[#E8E8E8] space-y-2 animate-fadeIn">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[11px] text-[#555555]">
+                      Supabase SQL Editor me ye SQL run karein taaki <code>public.product_reviews</code> table ban jaye:
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCopyReviewsSql}
+                      className="px-3 py-1.5 bg-[#9F2089] hover:bg-[#80182E] text-white text-[11px] font-bold rounded flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>{copiedReviewsSql ? 'SQL Copied!' : 'Copy Reviews SQL'}</span>
+                    </button>
+                  </div>
+                  <pre className="p-3 bg-[#1E1E2E] text-[#CDD6F4] text-[11px] font-mono rounded-lg overflow-x-auto max-h-60 leading-relaxed">
+                    {SUPABASE_REVIEWS_SQL}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            {/* Step 1: Category Selector */}
+            <div className="bg-white p-4 rounded-lg border border-[#E8E8E8] shadow-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#555555]">
+                  Step 1 · Select Category
+                </h3>
+                <span className="text-[11px] text-[#777777]">
+                  Total Reviews: <strong className="text-[#9F2089]">{totalReviewsCount}</strong>
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedReviewCategory('all');
+                    setIsReviewFormOpen(false);
+                    setEditingReviewId(null);
+                    if (products[0]) setSelectedReviewProductId(products[0].id);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                    selectedReviewCategory === 'all'
+                      ? 'bg-[#9F2089] text-white border-[#9F2089] shadow-xs'
+                      : 'bg-[#FAF8F5] text-[#444444] border-[#E8E8E8] hover:border-[#9F2089]'
+                  }`}
+                >
+                  All Categories ({products.length} products · {totalReviewsCount} reviews)
+                </button>
+
+                {categories
+                  .filter((cat) => cat.id !== 'all')
+                  .map((cat) => {
+                    const catProducts = products.filter((p) => p.category === cat.id);
+                    const catReviewCount = catProducts.reduce(
+                      (sum, p) => sum + (Array.isArray(p.reviews) ? p.reviews.length : 0),
+                      0
+                    );
+                    const isSelected = selectedReviewCategory === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedReviewCategory(cat.id);
+                          setIsReviewFormOpen(false);
+                          setEditingReviewId(null);
+                          if (catProducts[0]) {
+                            setSelectedReviewProductId(catProducts[0].id);
+                          } else {
+                            setSelectedReviewProductId('');
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#9F2089] text-white border-[#9F2089] shadow-xs'
+                            : 'bg-white text-[#333333] border-[#E8E8E8] hover:border-[#9F2089]'
+                        }`}
+                      >
+                        {cat.imageUrl && (
+                          <img
+                            src={cat.imageUrl}
+                            alt={cat.label}
+                            className="w-4 h-4 rounded-full object-cover"
+                          />
+                        )}
+                        <span>{cat.label}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded ${
+                            isSelected ? 'bg-white/20 text-white' : 'bg-[#F4F4F6] text-[#666666]'
+                          }`}
+                        >
+                          {catProducts.length} · ★{catReviewCount}
+                        </span>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* Step 2 & Step 3: Products inside Selected Category + Product Reviews CRUD */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              {/* Step 2: Product List inside Selected Category */}
+              <div className="lg:col-span-5 bg-white rounded-lg border border-[#E8E8E8] shadow-xs overflow-hidden">
+                <div className="px-4 py-3 bg-[#FAF8F5] border-b border-[#E8E8E8] flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#555555]">
+                    Step 2 · Products in Category ({reviewCategoryProducts.length})
+                  </h3>
+                </div>
+
+                {reviewCategoryProducts.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-[#777777]">
+                    Is category me abhi koi product nahi hai.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[#F0F0F2] max-h-[460px] overflow-y-auto">
+                    {reviewCategoryProducts.map((prod) => {
+                      const prodReviews = Array.isArray(prod.reviews) ? prod.reviews : [];
+                      const isActive = activeReviewProduct?.id === prod.id;
+                      return (
+                        <button
+                          key={prod.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedReviewProductId(prod.id);
+                            setIsReviewFormOpen(false);
+                            setEditingReviewId(null);
+                          }}
+                          className={`w-full text-left p-3 flex items-center gap-3 transition-colors cursor-pointer ${
+                            isActive
+                              ? 'bg-[#FDE5F4]/60 border-l-4 border-l-[#9F2089]'
+                              : 'hover:bg-[#FAF8F5]'
+                          }`}
+                        >
+                          <img
+                            src={prod.images[0] || '/assets/aistudio/placeholder.jpg'}
+                            alt={prod.title}
+                            className="w-12 h-14 object-cover rounded border border-[#E8E8E8] shrink-0 bg-[#FAF8F5]"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-[#222222] line-clamp-2 leading-snug">
+                              {prod.title}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-[#038D63] text-white text-[10px] font-bold">
+                                {(prod.rating || 4.8).toFixed(1)} ★
+                              </span>
+                              <span className="text-[11px] font-semibold text-[#666666]">
+                                {prodReviews.length} {prodReviews.length === 1 ? 'Review' : 'Reviews'}
+                              </span>
+                              <span className="text-[10px] text-[#888888]">
+                                ₹{prod.price.toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Step 3: Reviews for Selected Product */}
+              <div className="lg:col-span-7 bg-white rounded-lg border border-[#E8E8E8] shadow-xs overflow-hidden">
+                {!activeReviewProduct ? (
+                  <div className="p-8 text-center text-xs text-[#777777]">
+                    Reviews dekhne ya add karne ke liye left list se koi product chunein.
+                  </div>
+                ) : (
+                  <div className="p-4 space-y-4">
+                    {/* Selected Product Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#E8E8E8]">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={activeReviewProduct.images[0]}
+                          alt={activeReviewProduct.title}
+                          className="w-12 h-14 object-cover rounded border border-[#E8E8E8] shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-[#9F2089]">
+                            {activeReviewProduct.categoryLabel || activeReviewProduct.category}
+                          </div>
+                          <h3 className="text-sm font-bold text-[#222222] truncate">
+                            {activeReviewProduct.title}
+                          </h3>
+                          <div className="flex items-center gap-2 text-xs text-[#555555] mt-0.5">
+                            <span className="font-bold text-[#038D63]">
+                              {(activeReviewProduct.rating || 4.8).toFixed(1)} ★
+                            </span>
+                            <span>
+                              ({(activeReviewProduct.reviews || []).length} customer reviews)
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={openAddReviewForm}
+                        className="px-3.5 py-2 bg-[#9F2089] hover:bg-[#80182E] text-white text-xs font-bold rounded flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Review</span>
+                      </button>
+                    </div>
+
+                    {/* Add / Edit Review Form */}
+                    {isReviewFormOpen && (
+                      <form
+                        onSubmit={handleAdminSaveReview}
+                        className="p-4 bg-[#FAF8F5] border border-[#9F2089]/30 rounded-lg space-y-3 text-xs animate-fadeIn"
+                      >
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-bold text-sm text-[#222222]">
+                            {editingReviewId ? 'Edit Customer Review' : 'Add New Customer Review'}
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsReviewFormOpen(false);
+                              setEditingReviewId(null);
+                            }}
+                            className="text-[#666666] hover:text-[#222222] cursor-pointer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="block font-bold text-[#333333] mb-1">Star Rating *</label>
+                          <div className="flex items-center gap-1.5">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => setReviewForm((prev) => ({ ...prev, rating: star }))}
+                                className={`px-2.5 py-1.5 rounded border font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors ${
+                                  reviewForm.rating >= star
+                                    ? 'bg-amber-50 border-amber-400 text-amber-700'
+                                    : 'bg-white border-[#DDDDDD] text-[#999999]'
+                                }`}
+                              >
+                                <Star
+                                  className={`w-3.5 h-3.5 ${
+                                    reviewForm.rating >= star ? 'fill-amber-400 text-amber-500' : 'text-[#CCCCCC]'
+                                  }`}
+                                />
+                                <span>{star}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div>
+                            <label className="block font-bold text-[#333333] mb-1">Customer Name *</label>
+                            <input
+                              type="text"
+                              required
+                              value={reviewForm.userName}
+                              onChange={(e) => setReviewForm((prev) => ({ ...prev, userName: e.target.value }))}
+                              placeholder="e.g. Ayesha Khan"
+                              className="w-full px-2.5 py-2 border border-[#CCCCCC] rounded bg-white focus:border-[#9F2089] focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-bold text-[#333333] mb-1">City / Location</label>
+                            <input
+                              type="text"
+                              value={reviewForm.location}
+                              onChange={(e) => setReviewForm((prev) => ({ ...prev, location: e.target.value }))}
+                              placeholder="e.g. Kishanganj, Bihar"
+                              className="w-full px-2.5 py-2 border border-[#CCCCCC] rounded bg-white focus:border-[#9F2089] focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-bold text-[#333333] mb-1">Review Date</label>
+                            <input
+                              type="text"
+                              value={reviewForm.date}
+                              onChange={(e) => setReviewForm((prev) => ({ ...prev, date: e.target.value }))}
+                              placeholder="14 Nov 2026"
+                              className="w-full px-2.5 py-2 border border-[#CCCCCC] rounded bg-white focus:border-[#9F2089] focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block font-bold text-[#333333] mb-1">Review Comment *</label>
+                          <textarea
+                            required
+                            rows={3}
+                            value={reviewForm.comment}
+                            onChange={(e) => setReviewForm((prev) => ({ ...prev, comment: e.target.value }))}
+                            placeholder="Kapde ki quality, fitting aur delivery ke baare me likhein..."
+                            className="w-full px-2.5 py-2 border border-[#CCCCCC] rounded bg-white focus:border-[#9F2089] focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-end">
+                          <div>
+                            <label className="block font-bold text-[#333333] mb-1">
+                              Review Photo URL (Optional)
+                            </label>
+                            <div className="flex gap-1.5">
+                              <input
+                                type="text"
+                                value={reviewForm.reviewImage}
+                                onChange={(e) => setReviewForm((prev) => ({ ...prev, reviewImage: e.target.value }))}
+                                placeholder="Paste photo URL or upload →"
+                                className="flex-1 min-w-0 px-2.5 py-1.5 border border-[#CCCCCC] rounded bg-white focus:border-[#9F2089] focus:outline-none"
+                              />
+                              <label className="px-2.5 py-1.5 bg-white border border-[#9F2089] text-[#9F2089] font-bold rounded cursor-pointer hover:bg-[#FDE5F4] shrink-0 flex items-center gap-1">
+                                <Upload className="w-3 h-3" />
+                                <span>{reviewImgCompressing ? '...' : 'Photo'}</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handleReviewImageFile}
+                                  className="hidden"
+                                />
+                              </label>
+                            </div>
+                          </div>
+
+                          <label className="flex items-center gap-2 pb-1.5 cursor-pointer font-semibold text-[#333333]">
+                            <input
+                              type="checkbox"
+                              checked={reviewForm.verified}
+                              onChange={(e) => setReviewForm((prev) => ({ ...prev, verified: e.target.checked }))}
+                              className="w-4 h-4 accent-[#9F2089]"
+                            />
+                            <span>Verified Purchase Badge</span>
+                          </label>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsReviewFormOpen(false);
+                              setEditingReviewId(null);
+                            }}
+                            className="px-3.5 py-2 border border-[#CCCCCC] bg-white rounded font-bold text-[#444444] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={reviewSaving}
+                            className="px-4 py-2 bg-[#9F2089] hover:bg-[#80182E] disabled:opacity-60 text-white rounded font-bold cursor-pointer"
+                          >
+                            {reviewSaving
+                              ? 'Saving...'
+                              : editingReviewId
+                              ? 'Update Review'
+                              : 'Save Review'}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    {/* Existing Reviews List */}
+                    <div className="space-y-2.5">
+                      {(activeReviewProduct.reviews || []).length === 0 ? (
+                        <div className="p-6 text-center bg-[#FAF8F5] rounded-lg border border-dashed border-[#CCCCCC] text-xs text-[#777777]">
+                          Is product par abhi tak koi customer review nahi hai. Upar <strong>+ Add Review</strong> click karke pehla review add karein!
+                        </div>
+                      ) : (
+                        (activeReviewProduct.reviews || []).map((rev) => (
+                          <div
+                            key={rev.id}
+                            className="p-3.5 border border-[#E8E8E8] rounded-lg bg-white hover:border-[#9F2089]/40 transition-colors space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="px-2 py-0.5 bg-[#038D63] text-white text-[11px] font-bold rounded inline-flex items-center gap-0.5">
+                                  <span>{rev.rating}</span>
+                                  <Star className="w-2.5 h-2.5 fill-white" />
+                                </span>
+                                <span className="text-xs font-bold text-[#222222]">{rev.userName}</span>
+                                {rev.verified !== false && (
+                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                    ✓ Verified
+                                  </span>
+                                )}
+                                <span className="text-[11px] text-[#777777]">
+                                  · {rev.location || 'India'} · {rev.date}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditReviewForm(rev)}
+                                  className="px-2 py-1 text-[11px] font-bold text-[#9F2089] bg-[#FDE5F4] hover:bg-[#fbd0ea] rounded flex items-center gap-1 cursor-pointer"
+                                  title="Edit Review"
+                                >
+                                  <Edit className="w-3 h-3" />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPendingConfirm({
+                                      title: 'Delete Customer Review?',
+                                      message: `"${rev.userName}" ka ${rev.rating}★ review is product se permanently delete ho jayega.`,
+                                      confirmLabel: 'Delete Review',
+                                      onConfirm: async () => {
+                                        const ok = await onDeleteProductReview(activeReviewProduct.id, rev.id);
+                                        showToast(
+                                          ok
+                                            ? 'Review deleted & synced with Supabase!'
+                                            : 'Review removed locally!',
+                                          ok ? 'success' : 'info'
+                                        );
+                                      }
+                                    });
+                                  }}
+                                  className="px-2 py-1 text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded flex items-center gap-1 cursor-pointer"
+                                  title="Delete Review"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            <p className="text-xs text-[#333333] leading-relaxed">{rev.comment}</p>
+
+                            {rev.reviewImage && (
+                              <img
+                                src={rev.reviewImage}
+                                alt="Customer review attachment"
+                                className="w-16 h-16 object-cover rounded border border-[#E8E8E8]"
+                              />
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -18,7 +18,7 @@ import { ProfileModal } from './components/ProfileModal';
 import { PRODUCTS } from './data/products';
 import { INITIAL_BANNERS } from './data/banners';
 import { INITIAL_CATEGORIES } from './data/categories';
-import { Product, Banner, Category, CartItem, FilterState, Order, UserProfile } from './types';
+import { Product, Banner, Category, CartItem, FilterState, Order, UserProfile, ProductReview } from './types';
 import { Sparkles, ShoppingBag } from 'lucide-react';
 import { 
   getSupabaseConfig, 
@@ -30,7 +30,12 @@ import {
   fetchProductsFromSupabase, 
   fetchBannersFromSupabase, 
   fetchOrdersFromSupabase, 
-  saveOrderToSupabase 
+  saveOrderToSupabase,
+  fetchReviewsFromSupabase,
+  saveReviewToSupabase,
+  deleteReviewFromSupabase,
+  mergeRemoteReviewsIntoProducts,
+  calculateProductRatingSummary
 } from './lib/supabase';
 
 // One-time cleanup of legacy preloaded demo items/images from localStorage
@@ -177,11 +182,12 @@ export default function App() {
 
       if (!cfg.url || !cfg.anonKey) return;
 
-      let [remoteCategories, remoteProducts, remoteBanners, remoteOrders] = await Promise.all([
+      let [remoteCategories, remoteProducts, remoteBanners, remoteOrders, remoteReviews] = await Promise.all([
         fetchCategoriesFromSupabase(cfg),
         fetchProductsFromSupabase(cfg),
         fetchBannersFromSupabase(cfg),
-        fetchOrdersFromSupabase(cfg)
+        fetchOrdersFromSupabase(cfg),
+        fetchReviewsFromSupabase(cfg)
       ]);
 
       // Fallback to same-origin server proxy if browser direct fetch failed on mobile/network
@@ -191,6 +197,7 @@ export default function App() {
           remoteCategories = remoteCategories ?? serverData.categories;
           remoteProducts = serverData.products;
           remoteBanners = serverData.banners;
+          remoteReviews = remoteReviews ?? serverData.reviews;
         }
       }
 
@@ -199,8 +206,9 @@ export default function App() {
       }
 
       if (remoteProducts !== null) {
-        setProducts(remoteProducts);
-        const byId = new Map(remoteProducts.map((p) => [p.id, p]));
+        const mergedProducts = mergeRemoteReviewsIntoProducts(remoteProducts, remoteReviews);
+        setProducts(mergedProducts);
+        const byId = new Map(mergedProducts.map((p) => [p.id, p]));
         setQuickViewProduct((prev) => (prev ? byId.get(prev.id) || null : null));
         setCart((prev) =>
           prev
@@ -291,7 +299,8 @@ export default function App() {
                   { event: '*', schema: 'public', table: 'products' },
                   { event: '*', schema: 'public', table: 'categories' },
                   { event: '*', schema: 'public', table: 'banners' },
-                  { event: '*', schema: 'public', table: 'orders' }
+                  { event: '*', schema: 'public', table: 'orders' },
+                  { event: '*', schema: 'public', table: 'product_reviews' }
                 ]
               }
             },
@@ -675,6 +684,77 @@ export default function App() {
     setRecentOrders((prev) => prev.filter((o) => o.id !== orderId));
   };
 
+  const handleSaveProductReview = async (
+    productId: string,
+    review: ProductReview
+  ): Promise<boolean> => {
+    const targetProduct = products.find((p) => p.id === productId);
+    if (!targetProduct) return false;
+
+    const existingReviews = Array.isArray(targetProduct.reviews) ? targetProduct.reviews : [];
+    const exists = existingReviews.some((r) => r.id === review.id);
+    const enrichedReview: ProductReview = {
+      ...review,
+      productId: targetProduct.id,
+      categoryId: review.categoryId || targetProduct.category
+    };
+    const nextReviews = exists
+      ? existingReviews.map((r) => (r.id === review.id ? enrichedReview : r))
+      : [enrichedReview, ...existingReviews];
+
+    const summary = calculateProductRatingSummary(nextReviews, targetProduct.rating);
+    const updatedProduct: Product = {
+      ...targetProduct,
+      reviews: nextReviews,
+      rating: summary.rating,
+      reviewCount: summary.reviewCount
+    };
+
+    setProducts((prev) => prev.map((p) => (p.id === productId ? updatedProduct : p)));
+    setQuickViewProduct((prev) => (prev?.id === productId ? updatedProduct : prev));
+    setCart((prev) =>
+      prev.map((item) => (item.product.id === productId ? { ...item, product: updatedProduct } : item))
+    );
+    setWishlist((prev) => prev.map((p) => (p.id === productId ? updatedProduct : p)));
+
+    const cfg = getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      return await saveReviewToSupabase(enrichedReview, updatedProduct, cfg);
+    }
+    return false;
+  };
+
+  const handleDeleteProductReview = async (
+    productId: string,
+    reviewId: string
+  ): Promise<boolean> => {
+    const targetProduct = products.find((p) => p.id === productId);
+    if (!targetProduct) return false;
+
+    const existingReviews = Array.isArray(targetProduct.reviews) ? targetProduct.reviews : [];
+    const nextReviews = existingReviews.filter((r) => r.id !== reviewId);
+    const summary = calculateProductRatingSummary(nextReviews, nextReviews.length > 0 ? targetProduct.rating : 4.8);
+    const updatedProduct: Product = {
+      ...targetProduct,
+      reviews: nextReviews,
+      rating: summary.rating,
+      reviewCount: nextReviews.length
+    };
+
+    setProducts((prev) => prev.map((p) => (p.id === productId ? updatedProduct : p)));
+    setQuickViewProduct((prev) => (prev?.id === productId ? updatedProduct : prev));
+    setCart((prev) =>
+      prev.map((item) => (item.product.id === productId ? { ...item, product: updatedProduct } : item))
+    );
+    setWishlist((prev) => prev.map((p) => (p.id === productId ? updatedProduct : p)));
+
+    const cfg = getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      return await deleteReviewFromSupabase(reviewId, updatedProduct, cfg);
+    }
+    return false;
+  };
+
   const handleTriggerAdminLogin = () => {
     if (isAdminAuthenticated || sessionStorage.getItem('marhaba_admin_auth') === 'true') {
       setIsAdminAuthenticated(true);
@@ -720,6 +800,8 @@ export default function App() {
         onDeleteBanner={handleDeleteBanner}
         onUpdateOrderStatus={handleUpdateOrderStatus}
         onDeleteOrder={handleDeleteOrder}
+        onSaveProductReview={handleSaveProductReview}
+        onDeleteProductReview={handleDeleteProductReview}
         onResetToDemo={handleResetToDemo}
         onRefreshFromSupabase={syncFromSupabase}
         onClose={() => {
@@ -897,6 +979,8 @@ export default function App() {
         onToggleWishlist={handleToggleWishlist}
         onAddToCart={handleAddToCart}
         onBuyNow={handleBuyNow}
+        userProfile={userProfile}
+        onSubmitReview={handleSaveProductReview}
       />
 
       {/* Shopping Bag Drawer */}

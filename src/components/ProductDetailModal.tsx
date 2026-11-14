@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, Heart, Star, ShieldCheck, Truck, Check, Share2, 
-  Store, Copy, Ruler, ArrowLeft
+  Store, Copy, Ruler, ArrowLeft, Camera, CheckCircle2, RefreshCw
 } from 'lucide-react';
-import { Product } from '../types';
+import { Product, ProductReview, UserProfile } from '../types';
+import { compressImageFile } from '../lib/imageCompressor';
 
 interface ProductDetailModalProps {
   product: Product | null;
@@ -13,6 +14,8 @@ interface ProductDetailModalProps {
   onToggleWishlist: (product: Product) => void;
   onAddToCart: (product: Product, selectedSize: string) => void;
   onBuyNow: (product: Product, selectedSize: string) => void;
+  userProfile?: UserProfile | null;
+  onSubmitReview?: (productId: string, review: ProductReview) => Promise<boolean> | void;
 }
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
@@ -22,7 +25,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   isWishlisted,
   onToggleWishlist,
   onAddToCart,
-  onBuyNow
+  onBuyNow,
+  userProfile,
+  onSubmitReview
 }) => {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState<string>('Free Size');
@@ -35,6 +40,17 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [isFollowingSupplier, setIsFollowingSupplier] = useState(false);
   const [addedAnimation, setAddedAnimation] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'reviews'>('details');
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [hoverRating, setHoverRating] = useState<number | null>(null);
+  const [reviewName, setReviewName] = useState('');
+  const [reviewLocation, setReviewLocation] = useState('');
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewImage, setReviewImage] = useState('');
+  const [reviewCompressing, setReviewCompressing] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewSuccessNotice, setReviewSuccessNotice] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && product) {
@@ -52,8 +68,16 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       setActiveTab('details');
       setShowSizeChart(false);
       setPincodeStatus('idle');
+      setShowReviewForm(false);
+      setReviewRating(5);
+      setReviewName(userProfile?.fullName || '');
+      setReviewLocation(userProfile ? `${userProfile.city}${userProfile.state ? `, ${userProfile.state}` : ''}` : '');
+      setReviewComment('');
+      setReviewImage('');
+      setReviewSuccessNotice(null);
+      setReviewError(null);
     }
-  }, [isOpen, product?.id]);
+  }, [isOpen, product?.id, userProfile?.fullName, userProfile?.city, userProfile?.state]);
 
   if (!isOpen || !product) return null;
 
@@ -104,6 +128,44 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     onAddToCart(product, effectiveSizeLabel);
     setAddedAnimation(true);
     setTimeout(() => setAddedAnimation(false), 2000);
+  };
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReviewError(null);
+    const cleanName = reviewName.trim() || userProfile?.fullName || 'Customer';
+    const cleanComment = reviewComment.trim();
+    if (!cleanComment) {
+      setReviewError('Kripya product ke baare me apna review likhein.');
+      return;
+    }
+
+    const newReview: ProductReview = {
+      id: `rev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      productId: product.id,
+      categoryId: product.category,
+      userName: cleanName,
+      location: reviewLocation.trim() || 'India',
+      rating: reviewRating,
+      date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+      comment: cleanComment,
+      verified: true,
+      reviewImage: reviewImage || undefined
+    };
+
+    setReviewSubmitting(true);
+    try {
+      if (onSubmitReview) {
+        await onSubmitReview(product.id, newReview);
+      }
+      setReviewComment('');
+      setReviewImage('');
+      setShowReviewForm(false);
+      setReviewSuccessNotice('Shukriya! Aapka review aur star rating save ho gaya hai.');
+      setTimeout(() => setReviewSuccessNotice(null), 4000);
+    } finally {
+      setReviewSubmitting(false);
+    }
   };
 
   return (
@@ -454,13 +516,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </button>
                   <button
                     onClick={() => setActiveTab('reviews')}
-                    className={`py-2 px-3 border-b-2 transition-colors ${
+                    className={`py-2 px-3 border-b-2 transition-colors cursor-pointer ${
                       activeTab === 'reviews'
                         ? 'border-[#9F2089] text-[#9F2089]'
                         : 'border-transparent text-[#666666]'
                     }`}
                   >
-                    Ratings & Reviews ({product.reviews?.length || 2})
+                    Ratings &amp; Reviews ({(product.reviews || []).length})
                   </button>
                 </div>
 
@@ -499,63 +561,224 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </div>
                 ) : (
                   <div className="pt-3 space-y-3">
-                    {/* Rating Breakdown Bar Chart */}
-                    <div className="p-3 bg-[#FAF8F5] rounded border border-[#E8E8E8] space-y-1.5 text-xs">
-                      <div className="flex items-center gap-2 font-bold text-sm text-[#222222]">
-                        <span className="text-base text-[#038D63] font-black">{product.rating} ★</span>
-                        <span>Overall Customer Rating</span>
-                      </div>
+                    {/* Rating Summary & Rate Product Button */}
+                    {(() => {
+                      const revList = product.reviews || [];
+                      const totalCount = revList.length;
+                      const counts = [5, 4, 3, 2, 1].map((star) => ({
+                        star,
+                        pct:
+                          totalCount > 0
+                            ? Math.round(
+                                (revList.filter((r) => Math.round(r.rating) === star).length / totalCount) * 100
+                              )
+                            : 0
+                      }));
 
-                      <div className="space-y-1 text-[11px] text-[#666666]">
-                        <div className="flex items-center gap-2">
-                          <span className="w-8">5 ★</span>
-                          <div className="flex-1 bg-[#E8E8E8] h-2 rounded-full overflow-hidden">
-                            <div className="bg-[#038D63] h-full w-[72%]" />
+                      return (
+                        <div className="p-3 bg-[#FAF8F5] rounded-lg border border-[#E8E8E8] space-y-2.5 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2 font-bold text-sm text-[#222222]">
+                                <span className="px-2 py-0.5 bg-[#038D63] text-white rounded text-sm font-black">
+                                  {product.rating} ★
+                                </span>
+                                <span>
+                                  {totalCount > 0
+                                    ? `${totalCount} Verified Review${totalCount > 1 ? 's' : ''}`
+                                    : `${product.reviewCount || 0} Ratings`}
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setShowReviewForm((prev) => !prev)}
+                              className="px-3 py-1.5 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold text-[11px] rounded-md shadow-xs cursor-pointer transition-colors"
+                            >
+                              {showReviewForm ? 'Close Form' : '★ Rate & Review Product'}
+                            </button>
                           </div>
-                          <span className="w-8 text-right font-medium">72%</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="w-8">4 ★</span>
-                          <div className="flex-1 bg-[#E8E8E8] h-2 rounded-full overflow-hidden">
-                            <div className="bg-[#038D63] h-full w-[18%]" />
+
+                          <div className="space-y-1 text-[11px] text-[#666666]">
+                            {counts.map(({ star, pct }) => (
+                              <div key={star} className="flex items-center gap-2">
+                                <span className="w-7 font-semibold">{star} ★</span>
+                                <div className="flex-1 bg-[#E8E8E8] h-2 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all ${
+                                      star >= 4 ? 'bg-[#038D63]' : star === 3 ? 'bg-[#FECE57]' : 'bg-orange-500'
+                                    }`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                                <span className="w-8 text-right font-medium">{pct}%</span>
+                              </div>
+                            ))}
                           </div>
-                          <span className="w-8 text-right font-medium">18%</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="w-8">3 ★</span>
-                          <div className="flex-1 bg-[#E8E8E8] h-2 rounded-full overflow-hidden">
-                            <div className="bg-[#FECE57] h-full w-[7%]" />
-                          </div>
-                          <span className="w-8 text-right font-medium">7%</span>
-                        </div>
+                      );
+                    })()}
+
+                    {reviewSuccessNotice && (
+                      <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>{reviewSuccessNotice}</span>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Meesho-style Interactive Write a Review Form */}
+                    {showReviewForm && (
+                      <form
+                        onSubmit={handleReviewSubmit}
+                        className="p-3.5 bg-white border-2 border-[#9F2089]/30 rounded-lg space-y-3 text-xs animate-fadeIn"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[#222222]">
+                            Rate this Product (Tap Stars):
+                          </span>
+                          <span className="text-[11px] font-bold text-[#038D63]">
+                            {['Poor', 'Fair', 'Good', 'Very Good', 'Excellent!'][(hoverRating || reviewRating) - 1]}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {[1, 2, 3, 4, 5].map((star) => {
+                            const active = star <= (hoverRating ?? reviewRating);
+                            return (
+                              <button
+                                key={star}
+                                type="button"
+                                onMouseEnter={() => setHoverRating(star)}
+                                onMouseLeave={() => setHoverRating(null)}
+                                onClick={() => setReviewRating(star)}
+                                className="p-1 focus:outline-none cursor-pointer transition-transform hover:scale-110"
+                                aria-label={`Rate ${star} stars`}
+                              >
+                                <Star
+                                  className={`w-6 h-6 ${
+                                    active ? 'fill-[#038D63] text-[#038D63]' : 'text-[#CCCCCC]'
+                                  }`}
+                                />
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            required
+                            value={reviewName}
+                            onChange={(e) => setReviewName(e.target.value)}
+                            placeholder="Your Name *"
+                            className="px-2.5 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none text-xs"
+                          />
+                          <input
+                            type="text"
+                            value={reviewLocation}
+                            onChange={(e) => setReviewLocation(e.target.value)}
+                            placeholder="City / State (e.g. Kishanganj)"
+                            className="px-2.5 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none text-xs"
+                          />
+                        </div>
+
+                        <textarea
+                          rows={2}
+                          required
+                          value={reviewComment}
+                          onChange={(e) => setReviewComment(e.target.value)}
+                          placeholder="Apna experience likhein (kapda quality, design, fitting kaisa laga)..."
+                          className="w-full px-2.5 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none text-xs resize-none"
+                        />
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[#FAF8F5] border border-[#CCCCCC] hover:border-[#9F2089] rounded text-[11px] font-semibold text-[#444444] cursor-pointer">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setReviewCompressing(true);
+                                try {
+                                  const res = await compressImageFile(file, 450, 450, 0.6, 12);
+                                  setReviewImage(res.dataUrl);
+                                } finally {
+                                  setReviewCompressing(false);
+                                }
+                              }}
+                            />
+                            {reviewCompressing ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#9F2089]" />
+                            ) : (
+                              <Camera className="w-3.5 h-3.5 text-[#9F2089]" />
+                            )}
+                            <span>{reviewImage ? 'Photo Added ✓' : 'Add Photo (Optional)'}</span>
+                          </label>
+
+                          <button
+                            type="submit"
+                            disabled={reviewSubmitting}
+                            className="px-4 py-1.5 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold rounded text-xs disabled:opacity-50 cursor-pointer"
+                          >
+                            {reviewSubmitting ? 'Saving...' : 'Submit Review'}
+                          </button>
+                        </div>
+
+                        {reviewImage && (
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={reviewImage}
+                              alt="Review upload preview"
+                              className="w-12 h-12 object-cover rounded border border-[#E8E8E8]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setReviewImage('')}
+                              className="text-[11px] text-red-600 font-semibold hover:underline"
+                            >
+                              Remove Photo
+                            </button>
+                          </div>
+                        )}
+
+                        {reviewError && <p className="text-[11px] text-red-600">{reviewError}</p>}
+                      </form>
+                    )}
 
                     {/* Customer Review List */}
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {(product.reviews || []).map((rev) => (
-                        <div key={rev.id} className="p-2.5 bg-white border border-[#E8E8E8] rounded text-xs space-y-1">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <span className="bg-[#038D63] text-white font-bold px-1 py-0.2 rounded text-[10px]">
-                                {rev.rating} ★
-                              </span>
-                              <span className="font-bold text-[#222222]">{rev.userName}</span>
-                              <span className="text-[10px] text-[#888888]">· {rev.location}</span>
-                            </div>
-                            <span className="text-[10px] text-[#888888]">{rev.date}</span>
-                          </div>
-                          <p className="text-[#555555]">{rev.comment}</p>
-                          {rev.reviewImage && (
-                            <img
-                              src={rev.reviewImage}
-                              alt="Customer review photo"
-                              className="w-14 h-14 object-cover rounded border border-[#E8E8E8] mt-1"
-                              referrerPolicy="no-referrer"
-                            />
-                          )}
+                    <div className="space-y-2 max-h-56 overflow-y-auto">
+                      {(product.reviews || []).length === 0 ? (
+                        <div className="p-4 text-center bg-white border border-[#E8E8E8] rounded text-xs text-[#666666]">
+                          Abhi tak koi review nahi hai — pehla review aur rating aap dein!
                         </div>
-                      ))}
+                      ) : (
+                        (product.reviews || []).map((rev) => (
+                          <div key={rev.id} className="p-2.5 bg-white border border-[#E8E8E8] rounded text-xs space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="bg-[#038D63] text-white font-bold px-1.5 py-0.5 rounded text-[10px] shrink-0">
+                                  {rev.rating} ★
+                                </span>
+                                <span className="font-bold text-[#222222] truncate">{rev.userName}</span>
+                                <span className="text-[10px] text-[#888888] truncate">· {rev.location}</span>
+                              </div>
+                              <span className="text-[10px] text-[#888888] shrink-0">{rev.date}</span>
+                            </div>
+                            <p className="text-[#444444] leading-relaxed">{rev.comment}</p>
+                            {rev.reviewImage && (
+                              <img
+                                src={rev.reviewImage}
+                                alt="Customer review photo"
+                                className="w-14 h-14 object-cover rounded border border-[#E8E8E8] mt-1"
+                                referrerPolicy="no-referrer"
+                              />
+                            )}
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 )}
