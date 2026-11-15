@@ -23,7 +23,7 @@ export const Footer: React.FC<FooterProps> = ({
         <div className="md:col-span-4 space-y-3">
           <div className="flex items-center gap-2.5">
             <img
-              src="/rz-icon-192.png"
+              src="/rs-icon-192.png"
               alt="RAZVI SHOP Logo"
               className="w-11 h-11 rounded-full object-contain shrink-0 shadow-xs"
             />

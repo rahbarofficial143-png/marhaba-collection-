@@ -9,13 +9,15 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RAZVI SHOP" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/rz-icon-192.png" />
-    <link rel="icon" type="image/svg+xml" href="/rz-icon.svg" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/rz-apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/rs-icon-192.png" />
+    <link rel="icon" type="image/svg+xml" href="/rs-icon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/rs-apple-touch-icon.png" />
+    <link rel="apple-touch-startup-image" href="/rs-icon-512.png" />
     <title>RAZVI SHOP</title>
     <meta name="description" content="RAZVI SHOP - High-tier multi-vendor fashion marketplace tailored to modern ethnic apparel direct from master weavers." />
     <meta property="og:title" content="RAZVI SHOP" />
     <meta property="og:description" content="RAZVI SHOP - High-tier multi-vendor fashion marketplace tailored to modern ethnic apparel direct from master weavers." />
+    <meta property="og:image" content="/rs-icon-512.png" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -23,7 +25,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet" />
   </head>
   <body class="bg-[#FAF8F5] text-[#111C2D] antialiased selection:bg-[#6B1426] selection:text-white">
-    <div id="root"></div>
+    <div id="root">
+      <div style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#FAF8F5;gap:14px;">
+        <img src="/rs-icon-512.png" alt="RAZVI SHOP" style="width:92px;height:92px;border-radius:9999px;object-fit:contain;" />
+        <div style="font-family:sans-serif;font-weight:700;font-size:18px;letter-spacing:0.06em;color:#4B0013;">RAZVI SHOP</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

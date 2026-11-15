@@ -3,6 +3,13 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
 
-registerSW({ immediate: true });
+registerSW({
+  immediate: true,
+  onRegisteredSW(_swUrl, registration) {
+    if (registration) {
+      registration.update().catch(() => {});
+    }
+  }
+});
 
 createRoot(document.getElementById('root')!).render(<App />);

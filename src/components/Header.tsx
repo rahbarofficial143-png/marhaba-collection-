@@ -130,7 +130,7 @@ export const Header: React.FC<HeaderProps> = ({
             title="RAZVI SHOP"
           >
             <img
-              src="/rz-icon-192.png"
+              src="/rs-icon-192.png"
               alt="RAZVI SHOP Logo"
               className="w-9 h-9 sm:w-11 sm:h-11 rounded-full object-contain shrink-0 shadow-xs"
             />
@@ -301,7 +301,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-md">
               <img
-                src="/rz-icon-192.png"
+                src="/rs-icon-192.png"
                 alt="RAZVI SHOP App Icon"
                 className="w-full h-full rounded-full object-contain"
               />

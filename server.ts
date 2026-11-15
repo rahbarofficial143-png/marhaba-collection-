@@ -147,7 +147,11 @@ async function startServer() {
     if (
       req.path === '/manifest.webmanifest' ||
       req.path === '/sw.js' ||
-      req.path === '/registerSW.js'
+      req.path === '/registerSW.js' ||
+      req.path.startsWith('/rs-icon') ||
+      req.path.startsWith('/rs-apple') ||
+      req.path.startsWith('/rz-icon') ||
+      req.path.startsWith('/rz-apple')
     ) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     }

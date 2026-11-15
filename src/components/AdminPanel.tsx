@@ -1121,7 +1121,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
             <div className="min-w-0 flex items-center gap-1.5">
               <img
-                src="/rz-icon-192.png"
+                src="/rs-icon-192.png"
                 alt="RAZVI SHOP"
                 className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-contain shrink-0 shadow-xs"
               />
