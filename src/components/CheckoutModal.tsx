@@ -2,9 +2,61 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, ShieldCheck, CheckCircle2, Truck, Banknote, 
   Copy, Check, ArrowRight, UserCheck, Landmark, QrCode, ZoomIn, PhoneCall, Video,
-  Camera, Image as ImageIcon, Send
+  Camera, Image as ImageIcon, Send, Share2, Loader2
 } from 'lucide-react';
 import { CartItem, Order, UserProfile, PaymentAccount } from '../types';
+
+async function compressScreenshotAsJpeg(file: File): Promise<{ dataUrl: string; jpegFile: File }> {
+  const src = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read screenshot'));
+    reader.onload = (ev) => resolve(String(ev.target?.result || ''));
+    reader.readAsDataURL(file);
+  });
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onerror = () => reject(new Error('Invalid screenshot image'));
+    el.onload = () => resolve(el);
+    el.src = src;
+  });
+
+  const maxDim = 960;
+  let w = img.width || 720;
+  let h = img.height || 1280;
+  if (w > maxDim || h > maxDim) {
+    if (w >= h) {
+      h = Math.round((h * maxDim) / w);
+      w = maxDim;
+    } else {
+      w = Math.round((w * maxDim) / h);
+      h = maxDim;
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(240, w);
+  canvas.height = Math.max(240, h);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas unavailable');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  // Adaptive quality so receipt text stays sharp while staying ~25-55 KB
+  let quality = 0.72;
+  let dataUrl = canvas.toDataURL('image/jpeg', quality);
+  while (dataUrl.length > 75000 && quality > 0.36) {
+    quality -= 0.1;
+    dataUrl = canvas.toDataURL('image/jpeg', quality);
+  }
+
+  const blob = await (await fetch(dataUrl)).blob();
+  const jpegFile = new File([blob], `razvi-payment-${Date.now()}.jpg`, { type: 'image/jpeg' });
+  return { dataUrl, jpegFile };
+}
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -63,7 +115,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upi' | 'card'>('upi');
   const [showScreenshotOptions, setShowScreenshotOptions] = useState(false);
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [compressedShareFile, setCompressedShareFile] = useState<File | null>(null);
+  const [screenshotDataUrl, setScreenshotDataUrl] = useState<string>('');
   const [screenshotPreview, setScreenshotPreview] = useState<string>('');
+  const [proofId, setProofId] = useState<string>('');
+  const [proofPageUrl, setProofPageUrl] = useState<string>('');
+  const [proofImageUrl, setProofImageUrl] = useState<string>('');
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const [shareHint, setShareHint] = useState('');
   const [screenshotSent, setScreenshotSent] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
@@ -72,6 +131,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   const screenshotSectionRef = useRef<HTMLDivElement | null>(null);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
+  const directWhatsappLinkRef = useRef<HTMLAnchorElement | null>(null);
   const waitingWhatsappReturnRef = useRef(false);
   const whatsappReturnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -81,7 +141,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       setPlacedOrder(null);
       setShowScreenshotOptions(false);
       setScreenshotFile(null);
+      setCompressedShareFile(null);
+      setScreenshotDataUrl('');
       setScreenshotPreview('');
+      setProofId('');
+      setProofPageUrl('');
+      setProofImageUrl('');
+      setIsUploadingProof(false);
+      setShareHint('');
       setScreenshotSent(false);
       waitingWhatsappReturnRef.current = false;
       if (whatsappReturnTimerRef.current) clearTimeout(whatsappReturnTimerRef.current);
@@ -206,13 +273,47 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const itemTitlesSummary = items
     .map((item) => `${item.product.title} (${item.selectedSize} x${item.quantity})`)
     .join(', ');
-  const whatsappScreenshotUrl = `https://wa.me/91${adminHelplinePhone}?text=${encodeURIComponent(
-    `Assalamu Alaikum! RAZVI SHOP Payment Screenshot Proof:\n• Name: ${formData.fullName || 'Customer'}\n• Phone: ${formData.phone || '-'}\n• Amount Paid: ₹${finalTotal.toLocaleString('en-IN')}\n• Paid To: ${merchantBank} (${merchantPhone})\n• Order Items: ${itemTitlesSummary}\n\n(Screenshot gallery se select karke saath me send kar rahe hain)`
-  )}`;
+  const proofLinkLine = proofPageUrl
+    ? `\n• Payment Screenshot Photo: ${proofPageUrl}`
+    : '';
+  const whatsappProofText = `Assalamu Alaikum! RAZVI SHOP Payment Screenshot Proof:\n• Name: ${formData.fullName || 'Customer'}\n• Phone: ${formData.phone || '-'}\n• Amount Paid: ₹${finalTotal.toLocaleString('en-IN')}\n• Paid To: ${merchantBank} (${merchantPhone})\n• Order Items: ${itemTitlesSummary}${proofLinkLine}\n\n(Screenshot photo saath me bheja gaya hai)`;
+  const whatsappScreenshotUrl = `https://wa.me/91${adminHelplinePhone}?text=${encodeURIComponent(whatsappProofText)}`;
 
-  const handleSelectScreenshot = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const syncProofMetadataToServer = (targetId: string, dataUrlToSave: string) => {
+    if (!dataUrlToSave) return;
+    fetch('/api/payment-proofs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: targetId || undefined,
+        imageDataUrl: dataUrlToSave,
+        customerName: formData.fullName || 'Customer',
+        customerPhone: formData.phone || '-',
+        amount: finalTotal,
+        bankName: merchantBank,
+        merchantPhone,
+        itemsSummary: itemTitlesSummary
+      })
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.ok && data?.id) {
+          const origin = typeof window !== 'undefined' ? window.location.origin : '';
+          setProofId(data.id);
+          setProofPageUrl(`${origin}${data.pagePath}`);
+          setProofImageUrl(`${origin}${data.imagePath}`);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        setIsUploadingProof(false);
+      });
+  };
+
+  const handleSelectScreenshot = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
     if (screenshotPreview && screenshotPreview.startsWith('blob:')) {
       URL.revokeObjectURL(screenshotPreview);
     }
@@ -220,40 +321,110 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setScreenshotFile(file);
     setScreenshotPreview(blobUrl);
     setScreenshotSent(false);
+    setShareHint('');
+    setProofId('');
+    setProofPageUrl('');
+    setProofImageUrl('');
+    setIsUploadingProof(true);
     setErrors((prev) => {
       const next = { ...prev };
       delete next.screenshot;
       return next;
     });
-    e.target.value = '';
+
+    try {
+      const { dataUrl, jpegFile } = await compressScreenshotAsJpeg(file);
+      setCompressedShareFile(jpegFile);
+      setScreenshotDataUrl(dataUrl);
+      const generatedId = `prf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      syncProofMetadataToServer(generatedId, dataUrl);
+    } catch {
+      setCompressedShareFile(file);
+      setIsUploadingProof(false);
+    }
   };
+
+  const markProofAsSent = () => {
+    waitingWhatsappReturnRef.current = false;
+    if (whatsappReturnTimerRef.current) {
+      clearTimeout(whatsappReturnTimerRef.current);
+      whatsappReturnTimerRef.current = null;
+    }
+    setScreenshotSent(true);
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.screenshot;
+      return next;
+    });
+    setTimeout(() => {
+      submitButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 220);
+  };
+
+  const fileForNativeShare = compressedShareFile || screenshotFile;
+  const canShareScreenshotFile =
+    typeof navigator !== 'undefined' &&
+    typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function' &&
+    Boolean(fileForNativeShare) &&
+    (() => {
+      try {
+        return navigator.canShare({ files: [fileForNativeShare!] });
+      } catch {
+        return false;
+      }
+    })();
 
   const handleLaunchWhatsAppSend = async () => {
     waitingWhatsappReturnRef.current = true;
-    // Try copying screenshot image to clipboard automatically if supported (helps quick paste in WhatsApp)
-    if (screenshotFile && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+    setShareHint('');
+    if (proofId && screenshotDataUrl) {
+      syncProofMetadataToServer(proofId, screenshotDataUrl);
+    }
+    const copyCandidate = compressedShareFile || screenshotFile;
+    if (copyCandidate && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
       try {
-        const mimeType = screenshotFile.type || 'image/png';
+        const mimeType = copyCandidate.type || 'image/jpeg';
         if (mimeType.startsWith('image/')) {
-          await navigator.clipboard.write([new ClipboardItem({ [mimeType]: screenshotFile })]);
+          await navigator.clipboard.write([new ClipboardItem({ [mimeType]: copyCandidate })]);
         }
       } catch {
         // Ignore clipboard errors on unsupported mobile browsers
       }
     }
-    // Fallback if returning focus doesn't fire automatically in embedded browsers
     if (whatsappReturnTimerRef.current) clearTimeout(whatsappReturnTimerRef.current);
     whatsappReturnTimerRef.current = setTimeout(() => {
       if (waitingWhatsappReturnRef.current) {
-        waitingWhatsappReturnRef.current = false;
-        setScreenshotSent(true);
-        setErrors((prev) => {
-          const next = { ...prev };
-          delete next.screenshot;
-          return next;
-        });
+        markProofAsSent();
       }
     }, 2000);
+  };
+
+  const handleSharePhotoToWhatsApp = async () => {
+    setShareHint('');
+    if (proofId && screenshotDataUrl) {
+      syncProofMetadataToServer(proofId, screenshotDataUrl);
+    }
+    const shareTargetFile = compressedShareFile || screenshotFile;
+    if (canShareScreenshotFile && shareTargetFile) {
+      try {
+        await navigator.share({
+          files: [shareTargetFile],
+          title: 'RAZVI SHOP Payment Screenshot Proof',
+          text: whatsappProofText
+        });
+        // Native WhatsApp Share automatically returns right back here once sent
+        markProofAsSent();
+        return;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          setShareHint('Share cancel hua. Niche "Direct WhatsApp 9334808340" se screenshot link seedha bhejein.');
+          return;
+        }
+        // If blocked (e.g. iframe), fall through seamlessly to direct WhatsApp 9334808340
+      }
+    }
+    directWhatsappLinkRef.current?.click();
   };
 
   const handlePlaceOrder = (e: React.FormEvent) => {
@@ -289,8 +460,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       status: 'confirmed',
       trackingNumber: trackingNum,
       estimatedDeliveryDate: formattedDelivery,
-      utrNumber: paymentMethod === 'upi' ? 'WHATSAPP-SCREENSHOT-PROOF' : undefined,
-      paymentPhone: merchantPhone
+      utrNumber:
+        paymentMethod === 'upi'
+          ? proofId
+            ? `WA-PROOF:${proofId}`
+            : 'WHATSAPP-SCREENSHOT-PROOF'
+          : undefined,
+      paymentPhone: merchantPhone,
+      paymentProofUrl: paymentMethod === 'upi' ? proofPageUrl || undefined : undefined,
+      paymentScreenshot:
+        paymentMethod === 'upi' ? proofImageUrl || screenshotDataUrl || undefined : undefined
     };
 
     setPlacedOrder(newOrder);
@@ -653,7 +832,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                               </div>
                             )}
 
-                            {/* Step 3: Screenshot Preview + Direct Send to Owner WhatsApp (9334808340) */}
+                            {/* Step 3: Screenshot Preview + Real Photo Upload + Owner WhatsApp Send (9334808340) */}
                             {screenshotPreview && !screenshotSent && (
                               <div className="p-3 bg-[#FAF8F5] rounded-lg border border-[#25D366]/50 space-y-2.5 animate-fadeIn">
                                 <div className="flex items-center gap-3">
@@ -667,13 +846,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                                       {screenshotFile?.name || 'Payment Screenshot Ready'}
                                     </div>
                                     <p className="text-[11px] text-[#555555]">
-                                      Screenshot select ho gaya hai! Ab niche <strong>Send on WhatsApp</strong> dabakar Owner (<strong>{adminHelplinePhone}</strong>) ko bhejein.
+                                      {isUploadingProof
+                                        ? 'Screenshot photo taiyar ho raha hai...'
+                                        : 'Screenshot Owner panel ke liye ready hai! Ab niche click karke WhatsApp par bhejein (send karte hi app me wapas aa jayega).'}
                                     </p>
                                     <button
                                       type="button"
                                       onClick={() => {
                                         setScreenshotPreview('');
                                         setScreenshotFile(null);
+                                        setCompressedShareFile(null);
+                                        setScreenshotDataUrl('');
+                                        setProofId('');
+                                        setProofPageUrl('');
+                                        setProofImageUrl('');
+                                        setShareHint('');
                                         setShowScreenshotOptions(true);
                                       }}
                                       className="text-[10px] font-bold text-[#9F2089] hover:underline cursor-pointer"
@@ -683,29 +870,89 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                                   </div>
                                 </div>
 
-                                <a
-                                  href={whatsappScreenshotUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={handleLaunchWhatsAppSend}
-                                  className="w-full py-2.5 px-3 rounded-md bg-[#25D366] hover:bg-[#1EB954] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors"
-                                >
-                                  <Send className="w-3.5 h-3.5 shrink-0" />
-                                  <span>Send Screenshot to WhatsApp ({adminHelplinePhone})</span>
-                                </a>
+                                <div className="space-y-2">
+                                  {canShareScreenshotFile && (
+                                    <button
+                                      type="button"
+                                      disabled={isUploadingProof}
+                                      onClick={handleSharePhotoToWhatsApp}
+                                      className="w-full py-2.5 px-3 rounded-md bg-[#25D366] hover:bg-[#1EB954] disabled:opacity-70 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors cursor-pointer"
+                                    >
+                                      {isUploadingProof ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                      ) : (
+                                        <Share2 className="w-3.5 h-3.5 shrink-0" />
+                                      )}
+                                      <span>
+                                        {isUploadingProof
+                                          ? 'Preparing Screenshot Photo...'
+                                          : `Send Actual Screenshot Photo to WhatsApp (${adminHelplinePhone})`}
+                                      </span>
+                                    </button>
+                                  )}
+
+                                  <a
+                                    ref={directWhatsappLinkRef}
+                                    href={isUploadingProof ? undefined : whatsappScreenshotUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => {
+                                      if (isUploadingProof) {
+                                        e.preventDefault();
+                                        return;
+                                      }
+                                      handleLaunchWhatsAppSend();
+                                    }}
+                                    className={`w-full py-2.5 px-3 rounded-md font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors ${
+                                      canShareScreenshotFile
+                                        ? 'bg-white hover:bg-[#E7F8EE] text-[#075E54] border border-[#25D366]'
+                                        : 'bg-[#25D366] hover:bg-[#1EB954] text-white'
+                                    } ${isUploadingProof ? 'opacity-70 pointer-events-none' : ''}`}
+                                  >
+                                    {isUploadingProof ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                    ) : (
+                                      <Send className="w-3.5 h-3.5 shrink-0" />
+                                    )}
+                                    <span>
+                                      {isUploadingProof
+                                        ? 'Uploading Screenshot Link...'
+                                        : canShareScreenshotFile
+                                          ? `Direct Chat ${adminHelplinePhone} (With Screenshot Link)`
+                                          : `Send Screenshot Proof to WhatsApp (${adminHelplinePhone})`}
+                                    </span>
+                                  </a>
+
+                                  {shareHint && (
+                                    <p className="text-[10px] font-semibold text-[#9F2089] text-center">
+                                      {shareHint}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
                             )}
 
                             {/* Step 4: Returned from WhatsApp -> Ready to Submit Success Banner */}
                             {screenshotSent && (
-                              <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg space-y-1.5 animate-fadeIn">
-                                <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
-                                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                  <span>Aapka screenshot successfully send ho gaya hai!</span>
+                              <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg space-y-2 animate-fadeIn">
+                                <div className="flex items-center gap-2.5">
+                                  {screenshotPreview && (
+                                    <img
+                                      src={screenshotPreview}
+                                      alt="Uploaded payment screenshot proof"
+                                      className="w-10 h-12 object-cover rounded border border-emerald-300 bg-white shrink-0"
+                                    />
+                                  )}
+                                  <div className="space-y-0.5">
+                                    <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                      <span>Aapka screenshot successfully send ho gaya hai!</span>
+                                    </div>
+                                    <p className="text-[11px] text-emerald-700 leading-relaxed">
+                                      Ab aap niche <strong>Submit Payment &amp; Confirm Order</strong> button par click karke apna order confirm kar sakte hain.
+                                    </p>
+                                  </div>
                                 </div>
-                                <p className="text-[11px] text-emerald-700 leading-relaxed">
-                                  Ab aap niche <strong>Submit Payment &amp; Confirm Order</strong> button par click karke apna order confirm kar sakte hain.
-                                </p>
                               </div>
                             )}
 

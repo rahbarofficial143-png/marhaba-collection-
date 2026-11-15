@@ -115,6 +115,25 @@ DROP POLICY IF EXISTS "Allow All Payment Settings" ON public.payment_settings;
 CREATE POLICY "Allow All Payment Settings" ON public.payment_settings
     FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
 
+CREATE TABLE IF NOT EXISTS public.payment_proofs (
+    id TEXT PRIMARY KEY,
+    customer_name TEXT DEFAULT '',
+    customer_phone TEXT DEFAULT '',
+    amount NUMERIC DEFAULT 0,
+    bank_name TEXT DEFAULT '',
+    merchant_phone TEXT DEFAULT '9334808340',
+    items_summary TEXT DEFAULT '',
+    image_data TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.payment_proofs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow All Payment Proofs" ON public.payment_proofs;
+CREATE POLICY "Allow All Payment Proofs" ON public.payment_proofs
+    FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_proof_url TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;
+
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
@@ -224,6 +243,23 @@ ALTER TABLE public.products ADD COLUMN IF NOT EXISTS featured BOOLEAN DEFAULT fa
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS reviews JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_phone TEXT DEFAULT '9334808340';
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS utr_number TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_proof_url TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;
+
+CREATE TABLE IF NOT EXISTS public.payment_proofs (
+    id TEXT PRIMARY KEY,
+    customer_name TEXT DEFAULT '',
+    customer_phone TEXT DEFAULT '',
+    amount NUMERIC DEFAULT 0,
+    bank_name TEXT DEFAULT '',
+    merchant_phone TEXT DEFAULT '9334808340',
+    items_summary TEXT DEFAULT '',
+    image_data TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.payment_proofs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow All Payment Proofs" ON public.payment_proofs;
+CREATE POLICY "Allow All Payment Proofs" ON public.payment_proofs FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
 
 -- ==============================================================================
 -- 6. ROW LEVEL SECURITY (RLS) - PERMISSIVE FOR ANON & AUTHENTICATED
@@ -765,6 +801,8 @@ export function orderToRow(o: Order): Record<string, any> {
     payment_method: o.paymentMethod,
     payment_phone: o.paymentPhone || '9334808340',
     utr_number: o.utrNumber,
+    payment_proof_url: o.paymentProofUrl || '',
+    payment_screenshot: o.paymentScreenshot || '',
     pricing: o.pricing,
     coupon_code: o.couponCode,
     status: o.status,
@@ -775,13 +813,20 @@ export function orderToRow(o: Order): Record<string, any> {
 }
 
 export function rowToOrder(row: any): Order {
+  const utr = typeof row.utr_number === 'string' ? row.utr_number : undefined;
+  const embeddedProofId = utr && utr.startsWith('WA-PROOF:') ? utr.slice(9).trim() : '';
+  const fallbackProofUrl = embeddedProofId ? `/proof/${embeddedProofId}` : undefined;
+  const fallbackProofImg = embeddedProofId ? `/api/payment-proofs/${embeddedProofId}.jpg` : undefined;
+
   return {
     id: row.id,
     createdAt: row.created_at,
     shippingAddress: row.shipping_address,
     paymentMethod: row.payment_method,
     paymentPhone: row.payment_phone || '9334808340',
-    utrNumber: row.utr_number,
+    utrNumber: utr,
+    paymentProofUrl: row.payment_proof_url || fallbackProofUrl,
+    paymentScreenshot: row.payment_screenshot || fallbackProofImg,
     pricing: row.pricing,
     couponCode: row.coupon_code,
     status: row.status,

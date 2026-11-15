@@ -132,9 +132,11 @@ export interface Order {
   status: 'pending' | 'confirmed' | 'artisan_packing' | 'loom_inspection' | 'dispatched' | 'out_for_delivery' | 'delivered';
   trackingNumber: string;
   estimatedDeliveryDate: string;
-  // Specific UPI payment fields requested by user
+  // Specific UPI payment & screenshot proof fields
   utrNumber?: string;
   paymentPhone?: string; // e.g. '9334808340'
+  paymentProofUrl?: string;
+  paymentScreenshot?: string;
 }
 
 export interface SupabaseConfig {

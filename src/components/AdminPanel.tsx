@@ -208,6 +208,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [categoryCompressing, setCategoryCompressing] = useState(false);
+  const [zoomedOrderProof, setZoomedOrderProof] = useState<{
+    orderId: string;
+    src: string;
+    proofUrl?: string;
+    amount: number;
+    customerName: string;
+  } | null>(null);
   const [bannerCompressing, setBannerCompressing] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<{
     title: string;
@@ -1828,7 +1835,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[11px] font-bold">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                             <span>
-                              {o.utrNumber === 'WHATSAPP-SCREENSHOT-PROOF'
+                              {o.utrNumber === 'WHATSAPP-SCREENSHOT-PROOF' || o.utrNumber.startsWith('WA-PROOF:')
                                 ? `WhatsApp Payment Screenshot Proof Verified (Paid to ${o.paymentPhone || '9334808340'})`
                                 : `UPI UTR / Reference: ${o.utrNumber} (Paid to ${o.paymentPhone || '9334808340'})`}
                             </span>
@@ -1875,6 +1882,78 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                     </div>
 
+                    {/* Customer Payment Screenshot Proof Thumbnail (View / Zoom) */}
+                    {(o.paymentScreenshot || o.paymentProofUrl || (o.utrNumber && o.utrNumber.startsWith('WA-PROOF:'))) && (() => {
+                      const fallbackProofId = o.utrNumber?.startsWith('WA-PROOF:') ? o.utrNumber.slice(9).trim() : '';
+                      const imgSrc = o.paymentScreenshot || (fallbackProofId ? `/api/payment-proofs/${fallbackProofId}.jpg` : '');
+                      const viewPage = o.paymentProofUrl || (fallbackProofId ? `/proof/${fallbackProofId}` : '');
+                      if (!imgSrc) return null;
+                      return (
+                        <div className="flex flex-wrap items-center justify-between gap-3 p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200">
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setZoomedOrderProof({
+                                  orderId: o.id,
+                                  src: imgSrc,
+                                  proofUrl: viewPage,
+                                  amount: o.pricing.finalTotal,
+                                  customerName: o.shippingAddress.fullName
+                                })
+                              }
+                              className="w-12 h-14 rounded border border-emerald-300 bg-white overflow-hidden shrink-0 hover:ring-2 hover:ring-[#9F2089] transition-all cursor-pointer"
+                              title="Click to zoom Customer Payment Screenshot"
+                            >
+                              <img
+                                src={imgSrc}
+                                alt={`Payment screenshot for order ${o.id}`}
+                                className="w-full h-full object-cover"
+                              />
+                            </button>
+                            <div className="text-xs">
+                              <div className="font-bold text-emerald-900">
+                                Customer Payment Screenshot Received
+                              </div>
+                              <div className="text-[11px] text-emerald-700">
+                                Photo par click karke full screen mein screenshot verify karein.
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setZoomedOrderProof({
+                                  orderId: o.id,
+                                  src: imgSrc,
+                                  proofUrl: viewPage,
+                                  amount: o.pricing.finalTotal,
+                                  customerName: o.shippingAddress.fullName
+                                })
+                              }
+                              className="px-3 py-1.5 rounded bg-white hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>View Screenshot</span>
+                            </button>
+                            {viewPage && (
+                              <a
+                                href={viewPage}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2.5 py-1.5 rounded bg-[#25D366] hover:bg-[#1EB954] text-white text-xs font-bold flex items-center gap-1"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                <span>Receipt</span>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {/* Order items */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                       {o.items.map((item, idx) => (
@@ -1908,6 +1987,64 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Full-Screen Payment Screenshot Zoom Modal */}
+            {zoomedOrderProof && (
+              <div
+                className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4"
+                onClick={() => setZoomedOrderProof(null)}
+              >
+                <div
+                  className="bg-white rounded-xl max-w-md w-full overflow-hidden shadow-2xl border border-[#E8E8E8]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-[#E8E8E8] bg-[#FAF8F5]">
+                    <div className="text-xs">
+                      <div className="font-bold text-[#222222]">
+                        Order #{zoomedOrderProof.orderId} · Payment Screenshot
+                      </div>
+                      <div className="text-[11px] text-[#666666]">
+                        {zoomedOrderProof.customerName} · Paid ₹{zoomedOrderProof.amount.toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setZoomedOrderProof(null)}
+                      className="p-1.5 rounded-full hover:bg-black/5 text-[#555555] cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="p-4 bg-[#111111] flex items-center justify-center">
+                    <img
+                      src={zoomedOrderProof.src}
+                      alt={`Payment screenshot for order ${zoomedOrderProof.orderId}`}
+                      className="max-h-[70vh] w-auto object-contain rounded"
+                    />
+                  </div>
+                  <div className="p-3 bg-white border-t border-[#E8E8E8] flex items-center justify-end gap-2">
+                    {zoomedOrderProof.proofUrl && (
+                      <a
+                        href={zoomedOrderProof.proofUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 rounded bg-[#25D366] text-white text-xs font-bold flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Open Receipt Link</span>
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setZoomedOrderProof(null)}
+                      className="px-4 py-1.5 rounded bg-[#9F2089] text-white text-xs font-bold cursor-pointer"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
