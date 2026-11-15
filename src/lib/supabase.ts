@@ -1,4 +1,4 @@
-import { Product, Banner, Category, Order, SupabaseConfig, ProductReview, UserProfile } from '../types';
+import { Product, Banner, Category, Order, SupabaseConfig, ProductReview, UserProfile, PaymentAccount } from '../types';
 import { getBuiltInSupabaseDefaults } from './storefrontDefaults';
 import { encodeMultiColorSingleLink, decodeMultiColorSingleLink } from './multiColorCodec';
 import {
@@ -16,6 +16,13 @@ import {
   decodeCompactUserAddressSync,
   decodeCompactUserAddressAsync
 } from './userCodec';
+import {
+  buildPaymentAccountId,
+  encodeCompactPaymentMeta,
+  encodeCompactPaymentMetaAsync,
+  decodeCompactPaymentMetaSync,
+  decodeCompactPaymentMetaAsync
+} from './paymentCodec';
 
 export const SUPABASE_REVIEWS_SQL = `-- ==============================================================================
 -- RAZVI SHOP: PRODUCT REVIEWS TABLE SQL (Customer & Admin Reviews)
@@ -80,6 +87,38 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.store_users; EXCEPTION WHEN duplicate_object THEN NULL; END;
+  END IF;
+END $$;`;
+
+export const SUPABASE_PAYMENT_SQL = `-- ==============================================================================
+-- RAZVI SHOP: PAYMENT QR SCANNER, PHONE & BANK SETTINGS SQL (Ultra-Low KB URLs)
+-- Run this in Supabase SQL Editor so Admin QR, Phone & Bank Name sync live to all users
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS public.payment_settings (
+    id TEXT PRIMARY KEY,
+    phone TEXT NOT NULL DEFAULT '',
+    bank_name TEXT NOT NULL DEFAULT '',
+    qr_url TEXT NOT NULL DEFAULT '',
+    packed_data TEXT NOT NULL DEFAULT '',
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_settings_active ON public.payment_settings (active);
+CREATE INDEX IF NOT EXISTS idx_payment_settings_updated_at ON public.payment_settings (updated_at DESC);
+
+ALTER TABLE public.payment_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow All Payment Settings" ON public.payment_settings;
+CREATE POLICY "Allow All Payment Settings" ON public.payment_settings
+    FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.payment_settings; EXCEPTION WHEN duplicate_object THEN NULL; END;
   END IF;
 END $$;`;
 
@@ -281,7 +320,26 @@ DROP POLICY IF EXISTS "Allow All Store Users" ON public.store_users;
 CREATE POLICY "Allow All Store Users" ON public.store_users FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
 
 -- ==============================================================================
--- 10. REALTIME PUBLICATION (Enables instant sync events on connected clients)
+-- 10. PAYMENT SETTINGS TABLE (Admin QR Scanner, Phone Number & Bank Name)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.payment_settings (
+    id TEXT PRIMARY KEY,
+    phone TEXT NOT NULL DEFAULT '',
+    bank_name TEXT NOT NULL DEFAULT '',
+    qr_url TEXT NOT NULL DEFAULT '',
+    packed_data TEXT NOT NULL DEFAULT '',
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_payment_settings_active ON public.payment_settings (active);
+CREATE INDEX IF NOT EXISTS idx_payment_settings_updated_at ON public.payment_settings (updated_at DESC);
+ALTER TABLE public.payment_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow All Payment Settings" ON public.payment_settings;
+CREATE POLICY "Allow All Payment Settings" ON public.payment_settings FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
+
+-- ==============================================================================
+-- 11. REALTIME PUBLICATION (Enables instant sync events on connected clients)
 -- ==============================================================================
 DO $$
 BEGIN
@@ -292,6 +350,7 @@ BEGIN
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.orders; EXCEPTION WHEN duplicate_object THEN NULL; END;
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.product_reviews; EXCEPTION WHEN duplicate_object THEN NULL; END;
     BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.store_users; EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.payment_settings; EXCEPTION WHEN duplicate_object THEN NULL; END;
   END IF;
 END $$;
 
@@ -436,6 +495,7 @@ export async function fetchStorefrontDataFromServer(): Promise<{
   banners: Banner[] | null;
   reviews: ProductReview[] | null;
   users: UserProfile[] | null;
+  paymentSettings: PaymentAccount[] | null;
 } | null> {
   try {
     const res = await fetch('/api/storefront-data', { cache: 'no-store' });
@@ -469,12 +529,18 @@ export async function fetchStorefrontDataFromServer(): Promise<{
       ? await Promise.all(usersRaw.map((row: any) => rowToUserAsync(row)))
       : null;
 
+    const paymentRaw = Array.isArray(data.paymentSettings) ? data.paymentSettings : null;
+    const decodedPayments = paymentRaw
+      ? await Promise.all(paymentRaw.map((row: any) => rowToPaymentAccountAsync(row)))
+      : null;
+
     return {
       categories: Array.isArray(data.categories) ? data.categories.map(rowToCategory) : null,
       products: decodedProducts,
       banners: Array.isArray(data.banners) ? data.banners.map(rowToBanner) : null,
       reviews: decodedReviews,
-      users: decodedUsers
+      users: decodedUsers,
+      paymentSettings: decodedPayments
     };
   } catch (err) {
     console.warn('Could not fetch storefront fallback data from server', err);
@@ -768,6 +834,48 @@ export async function rowToUserAsync(row: any): Promise<UserProfile> {
       city: addr.city || base.city,
       state: addr.state || base.state,
       pincode: addr.pincode || base.pincode
+    };
+  }
+  return base;
+}
+
+export function paymentAccountToRow(p: PaymentAccount): Record<string, any> {
+  return {
+    id: buildPaymentAccountId(p.id),
+    phone: (p.phone || '').trim(),
+    bank_name: (p.bankName || '').trim(),
+    qr_url: (p.qrImageUrl || '').trim(),
+    packed_data: encodeCompactPaymentMeta(p),
+    active: Boolean(p.active),
+    created_at: p.createdAt || new Date().toISOString(),
+    updated_at: p.updatedAt || new Date().toISOString()
+  };
+}
+
+export function rowToPaymentAccount(row: any): PaymentAccount {
+  const packed = typeof row.packed_data === 'string' ? row.packed_data : '';
+  const meta = decodeCompactPaymentMetaSync(packed);
+  return {
+    id: row.id,
+    bankName: row.bank_name || '',
+    phone: row.phone || '',
+    upiId: meta.upiId || row.upi_id || '',
+    accountHolder: meta.accountHolder || row.account_holder || '',
+    qrImageUrl: row.qr_url || '',
+    active: row.active ?? true,
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || row.created_at || new Date().toISOString()
+  };
+}
+
+export async function rowToPaymentAccountAsync(row: any): Promise<PaymentAccount> {
+  const base = rowToPaymentAccount(row);
+  if (typeof row.packed_data === 'string' && row.packed_data.startsWith('pz1:')) {
+    const meta = await decodeCompactPaymentMetaAsync(row.packed_data);
+    return {
+      ...base,
+      upiId: meta.upiId || base.upiId,
+      accountHolder: meta.accountHolder || base.accountHolder
     };
   }
   return base;
@@ -1267,6 +1375,77 @@ export async function deleteUserFromSupabase(userId: string, config?: SupabaseCo
 }
 
 /**
+ * Fetch Admin payment QR & Bank settings from public.payment_settings
+ */
+export async function fetchPaymentAccountsFromSupabase(config?: SupabaseConfig): Promise<PaymentAccount[] | null> {
+  try {
+    const cfg = config || getSupabaseConfig();
+    if (!cfg.url || !cfg.anonKey) return null;
+    const base = cleanSupabaseUrl(cfg.url);
+    const res = await fetch(`${base}/rest/v1/payment_settings?select=*&order=created_at.asc`, {
+      method: 'GET',
+      headers: buildSupabaseHeaders(cfg.anonKey),
+      cache: 'no-store'
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return null;
+    return Promise.all(rows.map((row) => rowToPaymentAccountAsync(row)));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save or update an Admin payment QR / Phone / Bank row in public.payment_settings
+ */
+export async function savePaymentAccountToSupabase(account: PaymentAccount, config?: SupabaseConfig): Promise<boolean> {
+  try {
+    const row = paymentAccountToRow(account);
+    row.packed_data = await encodeCompactPaymentMetaAsync(account);
+    await upsertResilient('payment_settings', row, config);
+    return true;
+  } catch (err) {
+    console.error('Failed saving payment account to Supabase:', err);
+    return false;
+  }
+}
+
+/**
+ * Sync full list of payment accounts (e.g. when switching active status across accounts)
+ */
+export async function syncPaymentAccountsToSupabase(accounts: PaymentAccount[], config?: SupabaseConfig): Promise<boolean> {
+  if (accounts.length === 0) return true;
+  try {
+    const rows = await Promise.all(
+      accounts.map(async (acc) => {
+        const row = paymentAccountToRow(acc);
+        row.packed_data = await encodeCompactPaymentMetaAsync(acc);
+        return row;
+      })
+    );
+    await upsertResilient('payment_settings', rows, config);
+    return true;
+  } catch (err) {
+    console.error('Failed syncing payment accounts to Supabase:', err);
+    return false;
+  }
+}
+
+/**
+ * Delete an Admin payment QR / Phone / Bank row from public.payment_settings
+ */
+export async function deletePaymentAccountFromSupabase(accountId: string, config?: SupabaseConfig): Promise<boolean> {
+  try {
+    await postgrestRequest(`payment_settings?id=eq.${encodeURIComponent(accountId)}`, 'DELETE', undefined, config);
+    return true;
+  } catch (err) {
+    console.error('Failed deleting payment account from Supabase:', err);
+    return false;
+  }
+}
+
+/**
  * 1-Click Master Batch Sync: Pushes all local categories, products, banners, orders to Supabase
  */
 export async function batchSyncAllToSupabase(
@@ -1274,7 +1453,8 @@ export async function batchSyncAllToSupabase(
   products: Product[],
   banners: Banner[],
   orders: Order[],
-  config?: SupabaseConfig
+  config?: SupabaseConfig,
+  paymentAccounts: PaymentAccount[] = []
 ): Promise<{ success: boolean; message: string; details: { categories: number; products: number; banners: number; orders: number } }> {
   const cfg = config || getSupabaseConfig();
   if (!cfg.url || !cfg.anonKey) {
@@ -1329,6 +1509,11 @@ export async function batchSyncAllToSupabase(
     if (orders.length > 0) {
       const orderRows = orders.map(orderToRow);
       await upsertResilient('orders', orderRows, cfg);
+    }
+
+    // 5. Sync Payment QR / Bank settings if any (ignore cleanly if table not yet created)
+    if (paymentAccounts.length > 0) {
+      await syncPaymentAccountsToSupabase(paymentAccounts, cfg).catch(() => false);
     }
 
     return {

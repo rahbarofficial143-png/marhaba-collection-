@@ -5,13 +5,16 @@ interface FooterProps {
   onSelectCategory: (catId: string) => void;
   onOpenArtisans: () => void;
   onOpenTracking: () => void;
+  paymentPhone?: string;
 }
 
 export const Footer: React.FC<FooterProps> = ({
   onSelectCategory,
   onOpenArtisans,
-  onOpenTracking
+  onOpenTracking,
+  paymentPhone
 }) => {
+  const activePhone = (paymentPhone || '').trim() || '9334808340';
   return (
     <footer className="bg-white border-t border-[#E8E8E8] text-[#222222] mt-10">
       {/* Main Footer Links */}
@@ -45,7 +48,7 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <Phone className="w-3.5 h-3.5 text-[#9F2089] shrink-0" />
-              <span>Customer Care / UPI: +91 9334808340 (Mon-Sat, 9am - 7pm IST)</span>
+              <span>Customer Care / UPI: +91 {activePhone} (Mon-Sat, 9am - 7pm IST)</span>
             </div>
             <div className="flex items-center gap-2">
               <Mail className="w-3.5 h-3.5 text-[#9F2089] shrink-0" />

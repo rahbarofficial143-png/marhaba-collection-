@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, ShieldCheck, CheckCircle2, Truck, Banknote, 
-  Copy, Check, ArrowRight, UserCheck
+  Copy, Check, ArrowRight, UserCheck, Landmark, QrCode, ZoomIn
 } from 'lucide-react';
-import { CartItem, Order, UserProfile } from '../types';
+import { CartItem, Order, UserProfile, PaymentAccount } from '../types';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -13,6 +13,7 @@ interface CheckoutModalProps {
   appliedCode: string;
   onOrderPlaced: (order: Order) => void;
   userProfile: UserProfile | null;
+  activePaymentAccount?: PaymentAccount | null;
 }
 
 function buildAddressFromProfile(profile: UserProfile | null) {
@@ -49,7 +50,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   couponDiscount,
   appliedCode,
   onOrderPlaced,
-  userProfile
+  userProfile,
+  activePaymentAccount
 }) => {
   const [step, setStep] = useState<'form' | 'confirmed'>('form');
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
@@ -61,6 +63,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [utrNumber, setUtrNumber] = useState('');
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
+  const [qrZoomed, setQrZoomed] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -69,14 +72,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       setPlacedOrder(null);
       setUtrNumber('');
       setErrors({});
+      setQrZoomed(false);
       setFormData(buildAddressFromProfile(userProfile));
     }
   }, [isOpen, userProfile]);
 
   if (!isOpen) return null;
 
-  const merchantPhone = '9334808340';
-  const merchantUpi = '9334808340@ybl';
+  const merchantPhone = activePaymentAccount?.phone?.trim() || '9334808340';
+  const merchantBank = activePaymentAccount?.bankName?.trim() || 'RAZVI SHOP Verified Bank';
+  const merchantHolder = activePaymentAccount?.accountHolder?.trim() || 'RAZVI SHOP';
+  const merchantUpi = activePaymentAccount?.upiId?.trim() || `${merchantPhone}@ybl`;
+  const customQrUrl = activePaymentAccount?.qrImageUrl?.trim() || '';
 
   const itemsTotal = items.reduce(
     (sum, item) => sum + item.product.price * item.quantity,
@@ -118,11 +125,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setTimeout(() => setCopiedUpi(false), 2000);
   };
 
-  // UPI deep links
-  const upiUrl = `upi://pay?pa=${encodeURIComponent(merchantUpi)}&pn=${encodeURIComponent('RAZVI SHOP')}&am=${finalTotal}&cu=INR`;
-  const phonepeUrl = `phonepe://pay?pa=${encodeURIComponent(merchantUpi)}&pn=${encodeURIComponent('RAZVI SHOP')}&am=${finalTotal}&cu=INR`;
-  const gpayUrl = `gpay://upi/pay?pa=${encodeURIComponent('9334808340@okaxis')}&pn=${encodeURIComponent('RAZVI SHOP')}&am=${finalTotal}&cu=INR`;
-  const paytmUrl = `paytmmp://pay?pa=${encodeURIComponent('9334808340@paytm')}&pn=${encodeURIComponent('RAZVI SHOP')}&am=${finalTotal}&cu=INR`;
+  // UPI deep links (always routed to Admin's active payment account)
+  const payeeName = merchantHolder || 'RAZVI SHOP';
+  const upiUrl = `upi://pay?pa=${encodeURIComponent(merchantUpi)}&pn=${encodeURIComponent(payeeName)}&am=${finalTotal}&cu=INR`;
+  const phonepeUrl = `phonepe://pay?pa=${encodeURIComponent(merchantUpi)}&pn=${encodeURIComponent(payeeName)}&am=${finalTotal}&cu=INR`;
+  const gpayUrl = `gpay://upi/pay?pa=${encodeURIComponent(activePaymentAccount?.upiId?.trim() || `${merchantPhone}@okaxis`)}&pn=${encodeURIComponent(payeeName)}&am=${finalTotal}&cu=INR`;
+  const paytmUrl = `paytmmp://pay?pa=${encodeURIComponent(activePaymentAccount?.upiId?.trim() || `${merchantPhone}@paytm`)}&pn=${encodeURIComponent(payeeName)}&am=${finalTotal}&cu=INR`;
+  const activeQrImage =
+    customQrUrl ||
+    `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(upiUrl)}`;
 
   const handlePlaceOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -332,29 +343,85 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         </div>
                       </label>
 
-                      {/* Expanded UPI App Launcher & Phone Details */}
+                      {/* Expanded UPI App Launcher, Admin QR Scanner & Bank Details */}
                       {paymentMethod === 'upi' && (
                         <div className="mt-3 pt-3 border-t border-[#E8E8E8] space-y-3">
-                          {/* Merchant Phone Number Display & Quick Copy */}
-                          <div className="p-3 bg-white rounded-md border border-[#E8E8E8] flex items-center justify-between shadow-2xs">
-                            <div>
-                              <div className="text-[10px] text-[#888888] font-bold uppercase tracking-wider">
-                                Payment Phone Number:
+                          {/* Admin Bank Name, Account Holder, Phone Number & Copy */}
+                          <div className="p-3 bg-white rounded-lg border border-[#E8E8E8] space-y-2 shadow-2xs">
+                            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#F0F0F2]">
+                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#4B0013]">
+                                <Landmark className="w-3.5 h-3.5 text-[#9F2089]" />
+                                <span>Bank: {merchantBank}</span>
                               </div>
-                              <div className="text-base font-black text-[#9F2089] tracking-wider font-mono">
-                                {merchantPhone}
-                              </div>
-                              <div className="text-[10px] text-[#666666]">UPI ID: {merchantUpi}</div>
+                              {activePaymentAccount?.accountHolder && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#FAF8F5] border border-[#E8E8E8] text-[#444444]">
+                                  A/C: {merchantHolder}
+                                </span>
+                              )}
                             </div>
 
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <div className="text-[10px] text-[#888888] font-bold uppercase tracking-wider">
+                                  Payment Phone Number:
+                                </div>
+                                <div className="text-base font-black text-[#9F2089] tracking-wider font-mono">
+                                  {merchantPhone}
+                                </div>
+                                <div className="text-[10px] text-[#666666] flex items-center gap-1.5 mt-0.5">
+                                  <span>UPI ID: <strong>{merchantUpi}</strong></span>
+                                  <button
+                                    type="button"
+                                    onClick={handleCopyUpi}
+                                    className="text-[#9F2089] font-bold hover:underline cursor-pointer"
+                                  >
+                                    {copiedUpi ? 'Copied!' : 'Copy UPI'}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={handleCopyPhone}
+                                className="px-3 py-1.5 bg-[#FAF8F5] hover:bg-[#FDE5F4] border border-[#CCCCCC] text-[#9F2089] font-bold text-xs rounded flex items-center gap-1 transition-colors cursor-pointer"
+                              >
+                                {copiedPhone ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                                <span>{copiedPhone ? 'Copied!' : 'Copy Number'}</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Admin QR Code Scanner Box (Clear, Scannable, Tap-to-Zoom) */}
+                          <div className="p-3.5 bg-white rounded-lg border-2 border-[#9F2089]/30 flex flex-col sm:flex-row items-center gap-3.5 shadow-2xs">
                             <button
                               type="button"
-                              onClick={handleCopyPhone}
-                              className="px-3 py-1.5 bg-[#FAF8F5] hover:bg-[#FDE5F4] border border-[#CCCCCC] text-[#9F2089] font-bold text-xs rounded flex items-center gap-1 transition-colors"
+                              onClick={() => setQrZoomed((z) => !z)}
+                              className="relative group shrink-0 bg-white p-1.5 rounded-lg border border-[#E8E8E8] shadow-xs cursor-pointer"
+                              title="Tap to zoom QR Scanner"
                             >
-                              {copiedPhone ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                              <span>{copiedPhone ? 'Copied!' : 'Copy Number'}</span>
+                              <img
+                                src={activeQrImage}
+                                alt={`Scan QR to pay ${merchantBank}`}
+                                className={`${qrZoomed ? 'w-52 h-52' : 'w-28 h-28'} object-contain rounded transition-all`}
+                              />
+                              <span className="mt-1 flex items-center justify-center gap-1 text-[9px] font-bold text-[#9F2089]">
+                                <ZoomIn className="w-3 h-3" />
+                                <span>{qrZoomed ? 'Tap to Shrink' : 'Tap to Zoom QR'}</span>
+                              </span>
                             </button>
+
+                            <div className="text-[11px] text-[#555555] space-y-1.5 text-center sm:text-left">
+                              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold">
+                                <QrCode className="w-3 h-3" />
+                                <span>Direct Merchant QR Scanner</span>
+                              </div>
+                              <div className="font-bold text-xs text-[#222222]">
+                                Scan QR Code &amp; Pay ₹{finalTotal.toLocaleString('en-IN')}
+                              </div>
+                              <p className="leading-relaxed">
+                                PhonePe, Google Pay, Paytm ya kisi bhi UPI app se scan karein. Paisa seedha <strong>{merchantBank}</strong> ({merchantPhone}) me jayega.
+                              </p>
+                            </div>
                           </div>
 
                           {/* 1-Click App Buttons */}
@@ -394,18 +461,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                               >
                                 <span>Airtel / FamPay</span>
                               </a>
-                            </div>
-                          </div>
-
-                          {/* Dynamic QR Code for Desktop / Scanner */}
-                          <div className="flex items-center gap-3 p-2.5 bg-white rounded border border-[#E8E8E8]">
-                            <img
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=upi%3A%2F%2Fpay%3Fpa%3D${merchantPhone}%40ybl%26pn%3DRAZVI%2520SHOP%26am%3D${finalTotal}%26cu%3DINR`}
-                              alt="Scan to pay via PhonePe / GPay"
-                              className="w-16 h-16 rounded border shrink-0"
-                            />
-                            <div className="text-[11px] text-[#555555]">
-                              <strong className="text-[#222222]">Scan QR Code:</strong> Open PhonePe, GPay, ya Paytm scanner to pay <strong>₹{finalTotal.toLocaleString('en-IN')}</strong> directly.
                             </div>
                           </div>
 
@@ -564,7 +619,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               </p>
               {placedOrder?.utrNumber && (
                 <div className="p-2 bg-emerald-50 text-emerald-800 rounded border border-emerald-200 text-xs font-semibold mt-2">
-                  Payment verified via PhonePe/UPI to <strong>9334808340</strong> (UTR: {placedOrder.utrNumber})
+                  Payment verified via UPI / QR to <strong>{placedOrder.paymentPhone || merchantPhone}</strong> ({merchantBank}) · UTR: {placedOrder.utrNumber}
                 </div>
               )}
             </div>

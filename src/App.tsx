@@ -18,7 +18,7 @@ import { ProfileModal } from './components/ProfileModal';
 import { PRODUCTS } from './data/products';
 import { INITIAL_BANNERS } from './data/banners';
 import { INITIAL_CATEGORIES } from './data/categories';
-import { Product, Banner, Category, CartItem, FilterState, Order, UserProfile, ProductReview } from './types';
+import { Product, Banner, Category, CartItem, FilterState, Order, UserProfile, ProductReview, PaymentAccount } from './types';
 import { Sparkles, ShoppingBag } from 'lucide-react';
 import { 
   getSupabaseConfig, 
@@ -38,9 +38,14 @@ import {
   calculateProductRatingSummary,
   fetchUsersFromSupabase,
   saveUserToSupabase,
-  deleteUserFromSupabase
+  deleteUserFromSupabase,
+  fetchPaymentAccountsFromSupabase,
+  savePaymentAccountToSupabase,
+  syncPaymentAccountsToSupabase,
+  deletePaymentAccountFromSupabase
 } from './lib/supabase';
 import { buildStableUserId } from './lib/userCodec';
+import { buildPaymentAccountId } from './lib/paymentCodec';
 
 // One-time cleanup of legacy preloaded demo items/images from localStorage
 try {
@@ -132,6 +137,20 @@ export default function App() {
     return [];
   });
 
+  // Persistent Payment Accounts (Admin QR Scanner, Phone & Bank Settings)
+  const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>(() => {
+    try {
+      const stored = localStorage.getItem('marhaba_payment_accounts');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error('Error loading stored payment accounts', e);
+    }
+    return [];
+  });
+
   // Sync to localStorage
   useEffect(() => {
     try {
@@ -165,6 +184,14 @@ export default function App() {
     }
   }, [recentOrders]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('marhaba_payment_accounts', JSON.stringify(paymentAccounts));
+    } catch (e) {
+      console.error('Failed saving payment accounts to localStorage', e);
+    }
+  }, [paymentAccounts]);
+
   // Live Sync from Supabase across all connected user devices
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => products.length === 0);
   const isSyncingRef = useRef(false);
@@ -195,13 +222,14 @@ export default function App() {
 
       if (!cfg.url || !cfg.anonKey) return;
 
-      let [remoteCategories, remoteProducts, remoteBanners, remoteOrders, remoteReviews, remoteUsers] = await Promise.all([
+      let [remoteCategories, remoteProducts, remoteBanners, remoteOrders, remoteReviews, remoteUsers, remotePayments] = await Promise.all([
         fetchCategoriesFromSupabase(cfg),
         fetchProductsFromSupabase(cfg),
         fetchBannersFromSupabase(cfg),
         fetchOrdersFromSupabase(cfg),
         fetchReviewsFromSupabase(cfg),
-        fetchUsersFromSupabase(cfg)
+        fetchUsersFromSupabase(cfg),
+        fetchPaymentAccountsFromSupabase(cfg)
       ]);
 
       // Fallback to same-origin server proxy if browser direct fetch failed on mobile/network
@@ -213,6 +241,7 @@ export default function App() {
           remoteBanners = serverData.banners;
           remoteReviews = remoteReviews ?? serverData.reviews;
           remoteUsers = remoteUsers ?? serverData.users;
+          remotePayments = remotePayments ?? serverData.paymentSettings;
         }
       }
 
@@ -249,6 +278,10 @@ export default function App() {
       if (remoteUsers !== null) {
         setStoreUsers(remoteUsers);
       }
+
+      if (remotePayments !== null) {
+        setPaymentAccounts(remotePayments);
+      }
     } catch (err) {
       console.warn('Live Supabase sync error:', err);
     } finally {
@@ -274,12 +307,14 @@ export default function App() {
   const syncLiveAdminFeeds = useCallback(async () => {
     const cfg = getSupabaseConfig();
     if (!cfg.url || !cfg.anonKey) return;
-    const [remoteUsers, remoteOrders] = await Promise.all([
+    const [remoteUsers, remoteOrders, remotePayments] = await Promise.all([
       fetchUsersFromSupabase(cfg),
-      fetchOrdersFromSupabase(cfg)
+      fetchOrdersFromSupabase(cfg),
+      fetchPaymentAccountsFromSupabase(cfg)
     ]);
     if (remoteUsers !== null) setStoreUsers(remoteUsers);
     if (remoteOrders !== null) setRecentOrders(remoteOrders);
+    if (remotePayments !== null) setPaymentAccounts(remotePayments);
   }, []);
 
   useEffect(() => {
@@ -339,7 +374,8 @@ export default function App() {
                   { event: '*', schema: 'public', table: 'banners' },
                   { event: '*', schema: 'public', table: 'orders' },
                   { event: '*', schema: 'public', table: 'product_reviews' },
-                  { event: '*', schema: 'public', table: 'store_users' }
+                  { event: '*', schema: 'public', table: 'store_users' },
+                  { event: '*', schema: 'public', table: 'payment_settings' }
                 ]
               }
             },
@@ -498,6 +534,123 @@ export default function App() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isArtisansOpen, setIsArtisansOpen] = useState(false);
   const [isTrackingOpen, setIsTrackingOpen] = useState(false);
+
+  // Mobile Hardware / Gesture Back Button History Stack Sync
+  // Prevents closing the app when pressing phone's Back button inside a Product, Modal, Cart, Category, or Admin view.
+  const navDepth = useMemo(() => {
+    let depth = 0;
+    const hasFilterView =
+      activeCategory !== 'all' ||
+      Boolean(filters.searchQuery.trim()) ||
+      Boolean(filters.cluster);
+    if (hasFilterView) depth += 1;
+    if (isAdminOpen) depth += 1;
+    if (isArtisansOpen) depth += 1;
+    if (isTrackingOpen) depth += 1;
+    if (isProfileOpen) depth += 1;
+    if (isWishlistOpen) depth += 1;
+    if (isCartOpen) depth += 1;
+    if (quickViewProduct) depth += 1;
+    if (isCheckoutOpen) depth += 1;
+    if (isAdminLoginOpen) depth += 1;
+    return depth;
+  }, [
+    activeCategory,
+    filters.searchQuery,
+    filters.cluster,
+    isAdminOpen,
+    isArtisansOpen,
+    isTrackingOpen,
+    isProfileOpen,
+    isWishlistOpen,
+    isCartOpen,
+    quickViewProduct,
+    isCheckoutOpen,
+    isAdminLoginOpen
+  ]);
+
+  const historyDepthRef = useRef(0);
+  const ignoreNextPopCountRef = useRef(0);
+  const popTopLayerRef = useRef<() => void>(() => {});
+
+  popTopLayerRef.current = () => {
+    if (isAdminLoginOpen) {
+      setIsAdminLoginOpen(false);
+      return;
+    }
+    if (isCheckoutOpen) {
+      setIsCheckoutOpen(false);
+      return;
+    }
+    if (quickViewProduct) {
+      setQuickViewProduct(null);
+      return;
+    }
+    if (isAdminOpen) {
+      setIsAdminOpen(false);
+      syncFromSupabase();
+      return;
+    }
+    if (isCartOpen) {
+      setIsCartOpen(false);
+      return;
+    }
+    if (isWishlistOpen) {
+      setIsWishlistOpen(false);
+      return;
+    }
+    if (isProfileOpen) {
+      setIsProfileOpen(false);
+      return;
+    }
+    if (isTrackingOpen) {
+      setIsTrackingOpen(false);
+      return;
+    }
+    if (isArtisansOpen) {
+      setIsArtisansOpen(false);
+      return;
+    }
+    if (activeCategory !== 'all' || filters.searchQuery.trim() || filters.cluster) {
+      setActiveCategory('all');
+      setFilters((prev) => ({
+        ...prev,
+        category: 'all',
+        cluster: '',
+        searchQuery: ''
+      }));
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (ignoreNextPopCountRef.current > 0) {
+        ignoreNextPopCountRef.current -= 1;
+        return;
+      }
+      if (historyDepthRef.current > 0) {
+        historyDepthRef.current -= 1;
+      }
+      popTopLayerRef.current();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (navDepth > historyDepthRef.current) {
+      const diff = navDepth - historyDepthRef.current;
+      for (let i = 0; i < diff; i++) {
+        window.history.pushState({ razviDepth: historyDepthRef.current + i + 1 }, '', window.location.href);
+      }
+      historyDepthRef.current = navDepth;
+    } else if (navDepth < historyDepthRef.current) {
+      const diff = historyDepthRef.current - navDepth;
+      historyDepthRef.current = navDepth;
+      ignoreNextPopCountRef.current += 1;
+      window.history.go(-diff);
+    }
+  }, [navDepth]);
 
   // Cart & Wishlist Storage (empty until user adds products)
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -899,6 +1052,99 @@ export default function App() {
     return false;
   };
 
+  // Active Payment QR / Phone / Bank selected by Admin
+  const activePaymentAccount = useMemo(
+    () => paymentAccounts.find((a) => a.active) || paymentAccounts[0] || null,
+    [paymentAccounts]
+  );
+
+  const handleSavePaymentAccount = async (account: PaymentAccount): Promise<boolean> => {
+    const now = new Date().toISOString();
+    const id = buildPaymentAccountId(account.id);
+    const shouldActivate = paymentAccounts.length === 0 ? true : Boolean(account.active);
+
+    const existingIdx = paymentAccounts.findIndex((a) => a.id === id);
+    const cleanAcc: PaymentAccount = {
+      ...account,
+      id,
+      phone: account.phone.trim(),
+      bankName: account.bankName.trim(),
+      upiId: (account.upiId || '').trim(),
+      accountHolder: (account.accountHolder || '').trim(),
+      qrImageUrl: account.qrImageUrl.trim(),
+      active: shouldActivate,
+      createdAt: (existingIdx >= 0 ? paymentAccounts[existingIdx].createdAt : account.createdAt) || now,
+      updatedAt: now
+    };
+
+    const nextList =
+      existingIdx >= 0
+        ? paymentAccounts.map((a) => {
+            if (a.id === id) return cleanAcc;
+            return cleanAcc.active ? { ...a, active: false, updatedAt: now } : a;
+          })
+        : [
+            cleanAcc,
+            ...paymentAccounts.map((a) =>
+              cleanAcc.active ? { ...a, active: false, updatedAt: now } : a
+            )
+          ];
+
+    setPaymentAccounts(nextList);
+
+    const cfg = getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      if (cleanAcc.active && nextList.length > 1) {
+        return await syncPaymentAccountsToSupabase(nextList, cfg);
+      }
+      return await savePaymentAccountToSupabase(cleanAcc, cfg);
+    }
+    return false;
+  };
+
+  const handleSetActivePaymentAccount = async (accountId: string): Promise<boolean> => {
+    const now = new Date().toISOString();
+    const nextList = paymentAccounts.map((a) => ({
+      ...a,
+      active: a.id === accountId,
+      updatedAt: a.id === accountId || a.active ? now : a.updatedAt
+    }));
+    setPaymentAccounts(nextList);
+
+    const cfg = getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      return await syncPaymentAccountsToSupabase(nextList, cfg);
+    }
+    return false;
+  };
+
+  const handleDeletePaymentAccount = async (accountId: string): Promise<boolean> => {
+    const remaining = paymentAccounts.filter((a) => a.id !== accountId);
+    const now = new Date().toISOString();
+    let promotedAccount: PaymentAccount | null = null;
+
+    const nextList = remaining.map((a, idx) => {
+      const hasAnyActive = remaining.some((r) => r.active);
+      if (!hasAnyActive && idx === 0) {
+        promotedAccount = { ...a, active: true, updatedAt: now };
+        return promotedAccount;
+      }
+      return a;
+    });
+
+    setPaymentAccounts(nextList);
+
+    const cfg = getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      const deleted = await deletePaymentAccountFromSupabase(accountId, cfg);
+      if (promotedAccount) {
+        await savePaymentAccountToSupabase(promotedAccount, cfg);
+      }
+      return deleted;
+    }
+    return false;
+  };
+
   // If Admin View is active, render full Admin Portal
   if (isAdminOpen) {
     return (
@@ -908,6 +1154,7 @@ export default function App() {
         banners={banners}
         orders={recentOrders}
         users={storeUsers}
+        paymentAccounts={paymentAccounts}
         onAddProduct={handleAddProduct}
         onUpdateProduct={handleUpdateProduct}
         onDeleteProduct={handleDeleteProduct}
@@ -922,6 +1169,9 @@ export default function App() {
         onSaveProductReview={handleSaveProductReview}
         onDeleteProductReview={handleDeleteProductReview}
         onDeleteUser={handleDeleteStoreUser}
+        onSavePaymentAccount={handleSavePaymentAccount}
+        onSetActivePaymentAccount={handleSetActivePaymentAccount}
+        onDeletePaymentAccount={handleDeletePaymentAccount}
         onResetToDemo={handleResetToDemo}
         onRefreshFromSupabase={syncFromSupabase}
         onClose={() => {
@@ -962,6 +1212,7 @@ export default function App() {
           }
         }}
         userName={isAdminAuthenticated ? (userProfile?.fullName || 'Rahbar') : userProfile?.fullName}
+        paymentPhone={activePaymentAccount?.phone}
       />
 
       {adminToast && (
@@ -1088,6 +1339,7 @@ export default function App() {
           setProfileInitialTab('orders');
           setIsProfileOpen(true);
         }}
+        paymentPhone={activePaymentAccount?.phone}
       />
 
       {/* Product Detail Modal */}
@@ -1121,7 +1373,7 @@ export default function App() {
         }}
       />
 
-      {/* Checkout Modal with PhonePe 9334808340 and UTR verification */}
+      {/* Checkout Modal with Admin QR Scanner, Bank Name, Phone & UTR verification */}
       <CheckoutModal
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
@@ -1130,6 +1382,7 @@ export default function App() {
         appliedCode={appliedCouponInfo.code}
         onOrderPlaced={handleOrderPlaced}
         userProfile={userProfile}
+        activePaymentAccount={activePaymentAccount}
       />
 
       {/* Artisan Guilds Modal */}

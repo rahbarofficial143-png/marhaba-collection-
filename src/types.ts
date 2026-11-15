@@ -159,3 +159,16 @@ export interface UserProfile {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface PaymentAccount {
+  id: string;
+  bankName: string;
+  phone: string;
+  upiId?: string;
+  accountHolder?: string;
+  qrImageUrl: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+

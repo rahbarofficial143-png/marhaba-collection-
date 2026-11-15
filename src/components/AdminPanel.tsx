@@ -3,17 +3,20 @@ import {
   Plus, Edit, Trash2, ArrowLeft, Image as ImageIcon, Package, 
   ShoppingBag, Check, X, RefreshCw, FolderTree, Database, 
   Copy, ExternalLink, ShieldCheck, CheckCircle2, AlertCircle, Zap, Upload, LogOut, User,
-  Eye, EyeOff, KeyRound, Link2, Star, MessageSquare, Users, Phone, MapPin, Building2, Calendar
+  Eye, EyeOff, KeyRound, Link2, Star, MessageSquare, Users, Phone, MapPin, Building2, Calendar,
+  QrCode, Landmark, CreditCard
 } from 'lucide-react';
-import { Product, Banner, Order, Category, SupabaseConfig, ProductColorVariant, ProductReview, UserProfile } from '../types';
+import { Product, Banner, Order, Category, SupabaseConfig, ProductColorVariant, ProductReview, UserProfile, PaymentAccount } from '../types';
 import { ImageColorPicker } from './ImageColorPicker';
 import { encodeMultiColorSingleLink, getSupabaseEncodedPayloadKb } from '../lib/multiColorCodec';
 import { createCompactReviewId, getCompactReviewKb } from '../lib/reviewCodec';
 import { buildStableUserId, getCompactUserKb } from '../lib/userCodec';
+import { buildPaymentAccountId, getPaymentRowKb } from '../lib/paymentCodec';
 import { 
   SUPABASE_SQL_SCHEMA, 
   SUPABASE_REVIEWS_SQL,
   SUPABASE_USERS_SQL,
+  SUPABASE_PAYMENT_SQL,
   getSupabaseConfig, 
   saveSupabaseConfig, 
   clearSupabaseConfig,
@@ -41,6 +44,7 @@ interface AdminPanelProps {
   banners: Banner[];
   orders: Order[];
   users: UserProfile[];
+  paymentAccounts: PaymentAccount[];
   onAddProduct: (product: Product) => void;
   onUpdateProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
@@ -55,6 +59,9 @@ interface AdminPanelProps {
   onSaveProductReview: (productId: string, review: ProductReview) => Promise<boolean>;
   onDeleteProductReview: (productId: string, reviewId: string) => Promise<boolean>;
   onDeleteUser?: (userId: string) => Promise<boolean>;
+  onSavePaymentAccount: (account: PaymentAccount) => Promise<boolean>;
+  onSetActivePaymentAccount: (accountId: string) => Promise<boolean>;
+  onDeletePaymentAccount: (accountId: string) => Promise<boolean>;
   onResetToDemo: () => void;
   onRefreshFromSupabase?: () => void;
   onClose: () => void;
@@ -67,6 +74,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   banners,
   orders,
   users,
+  paymentAccounts,
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
@@ -81,13 +89,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onSaveProductReview,
   onDeleteProductReview,
   onDeleteUser,
+  onSavePaymentAccount,
+  onSetActivePaymentAccount,
+  onDeletePaymentAccount,
   onResetToDemo,
   onRefreshFromSupabase,
   onClose,
   onLogout
 }) => {
   const initialSupabaseCfg = getSupabaseConfig();
-  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'banners' | 'orders' | 'reviews' | 'users' | 'supabase'>(
+  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'banners' | 'orders' | 'reviews' | 'users' | 'payment' | 'supabase'>(
     initialSupabaseCfg.url && initialSupabaseCfg.anonKey ? 'products' : 'supabase'
   );
   const [searchProductQuery, setSearchProductQuery] = useState('');
@@ -229,6 +240,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showUsersSqlBox, setShowUsersSqlBox] = useState(false);
   const [copiedUsersSql, setCopiedUsersSql] = useState(false);
+
+  // Admin Payment QR Scanner, Phone & Bank State
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [paymentForm, setPaymentForm] = useState({
+    bankName: '',
+    phone: '',
+    upiId: '',
+    accountHolder: '',
+    qrImageUrl: '',
+    active: true
+  });
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const [qrCompressing, setQrCompressing] = useState(false);
+  const [showPaymentSqlBox, setShowPaymentSqlBox] = useState(false);
+  const [copiedPaymentSql, setCopiedPaymentSql] = useState(false);
+
+  const activePaymentAccount =
+    paymentAccounts.find((a) => a.active) || paymentAccounts[0] || null;
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToastMessage({ text, type });
@@ -833,7 +863,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
     setSyncingAll(true);
     setSyncResult(null);
-    const res = await batchSyncAllToSupabase(categories, products, banners, orders, cfg);
+    const res = await batchSyncAllToSupabase(categories, products, banners, orders, cfg, paymentAccounts);
     setSyncingAll(false);
     setSyncResult(res);
     if (res.success) {
@@ -950,6 +980,106 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setReviewImgCompressing(false);
       e.target.value = '';
     }
+  };
+
+  const openAddPaymentModal = () => {
+    setEditingPaymentId(null);
+    setPaymentForm({
+      bankName: '',
+      phone: '',
+      upiId: '',
+      accountHolder: 'RAZVI SHOP',
+      qrImageUrl: '',
+      active: true
+    });
+    setIsPaymentModalOpen(true);
+  };
+
+  const openEditPaymentModal = (acc: PaymentAccount) => {
+    setEditingPaymentId(acc.id);
+    setPaymentForm({
+      bankName: acc.bankName || '',
+      phone: acc.phone || '',
+      upiId: acc.upiId || '',
+      accountHolder: acc.accountHolder || '',
+      qrImageUrl: acc.qrImageUrl || '',
+      active: acc.active
+    });
+    setIsPaymentModalOpen(true);
+  };
+
+  const handleQrImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQrCompressing(true);
+    try {
+      const compressed = await compressImageFile(file, 340, 340, 0.72, 6);
+      setPaymentForm((prev) => ({ ...prev, qrImageUrl: compressed.dataUrl }));
+      showToast(`QR Scanner image compressed to ${compressed.sizeKb.toFixed(2)} KB!`);
+    } catch {
+      showToast('QR image compress nahi ho paya, URL paste karein.', 'error');
+    } finally {
+      setQrCompressing(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleGenerateAutoQrUrl = () => {
+    const cleanPhone = paymentForm.phone.trim();
+    const cleanUpi = paymentForm.upiId.trim() || (cleanPhone ? `${cleanPhone}@ybl` : '');
+    if (!cleanUpi) {
+      showToast('Pehle Phone Number ya UPI ID daalein.', 'error');
+      return;
+    }
+    const holder = paymentForm.accountHolder.trim() || 'RAZVI SHOP';
+    const upiIntent = `upi://pay?pa=${cleanUpi}&pn=${encodeURIComponent(holder)}&cu=INR`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(upiIntent)}`;
+    setPaymentForm((prev) => ({
+      ...prev,
+      upiId: prev.upiId.trim() || cleanUpi,
+      qrImageUrl: qrUrl
+    }));
+    showToast('Compact UPI QR URL generated (~0.10 KB)!');
+  };
+
+  const handleSavePaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const bankName = paymentForm.bankName.trim();
+    const phone = paymentForm.phone.trim();
+    if (!bankName || !phone) {
+      showToast('Bank Name aur Phone Number dono zaroori hain.', 'error');
+      return;
+    }
+    const cleanUpi = paymentForm.upiId.trim() || `${phone}@ybl`;
+    const holder = paymentForm.accountHolder.trim() || 'RAZVI SHOP';
+    const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(`upi://pay?pa=${cleanUpi}&pn=${encodeURIComponent(holder)}&cu=INR`)}`;
+    const qrImageUrl = paymentForm.qrImageUrl.trim() || fallbackQrUrl;
+
+    setPaymentSaving(true);
+    const payload: PaymentAccount = {
+      id: buildPaymentAccountId(editingPaymentId || undefined),
+      bankName,
+      phone,
+      upiId: cleanUpi,
+      accountHolder: holder,
+      qrImageUrl,
+      active: paymentForm.active
+    };
+
+    const synced = await onSavePaymentAccount(payload);
+    setPaymentSaving(false);
+    setIsPaymentModalOpen(false);
+    setEditingPaymentId(null);
+
+    const rowKb = getPaymentRowKb(payload).toFixed(2);
+    showToast(
+      synced
+        ? editingPaymentId
+          ? `Payment QR & Bank updated (${rowKb} KB) & synced to Supabase!`
+          : `Payment QR & Bank saved (${rowKb} KB) & synced to Supabase!`
+        : `Saved locally (${rowKb} KB)! Supabase me save karne ke liye Payment SQL run karein.`,
+      synced ? 'success' : 'info'
+    );
   };
 
   const totalRevenue = orders.reduce((sum, o) => sum + o.pricing.finalTotal, 0);
@@ -1085,7 +1215,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
               <div>
                 <span className="text-white/65">UPI:</span>{' '}
-                <strong className="text-[#FECE57] font-mono">9334808340</strong>
+                <strong className="text-[#FECE57] font-mono">
+                  {activePaymentAccount?.phone || '9334808340'}
+                </strong>
               </div>
               <div>
                 <span className="text-white/65">Orders:</span>{' '}
@@ -1172,6 +1304,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             >
               <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#038D63]" />
               <span>Users ({users.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('payment')}
+              className={`py-2.5 sm:py-3 px-1.5 sm:px-2 text-[11px] sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer ${
+                activeTab === 'payment'
+                  ? 'border-[#9F2089] text-[#9F2089]'
+                  : 'border-transparent text-[#666666] hover:text-[#222222]'
+              }`}
+            >
+              <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#9F2089]" />
+              <span>Payment &amp; QR ({paymentAccounts.length})</span>
             </button>
 
             <button
@@ -2874,6 +3018,241 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           );
         })()}
+
+        {/* ============================================================ */}
+        {/* TAB 8: PAYMENT QR SCANNER, PHONE NUMBER & BANK MANAGEMENT    */}
+        {/* ============================================================ */}
+        {activeTab === 'payment' && (() => {
+          const totalPaymentKb = paymentAccounts.reduce((s, a) => s + getPaymentRowKb(a), 0);
+          return (
+            <div className="space-y-4">
+              {/* Header & Actions */}
+              <div className="bg-white p-4 rounded-lg border border-[#E8E8E8] shadow-xs space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-lg bg-[#FDE5F4] border border-[#9F2089]/25 flex items-center justify-center shrink-0">
+                      <QrCode className="w-4 h-4 text-[#9F2089]" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-sm sm:text-base font-bold text-[#222222]">
+                          Payment QR Scanner, Phone &amp; Bank Settings ({paymentAccounts.length})
+                        </h2>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Live Checkout Sync
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#666666]">
+                        Customers pay karte waqt direct yahan set kiye gaye QR Scanner, Phone Number aur Bank me paisa aayega · Total Storage: <strong className="text-[#038D63]">{totalPaymentKb.toFixed(2)} KB</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={openAddPaymentModal}
+                      className="px-3.5 py-2 bg-[#9F2089] hover:bg-[#80182E] text-white text-xs font-bold rounded flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add QR / Phone / Bank</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowPaymentSqlBox((prev) => !prev)}
+                      className="px-3 py-2 bg-[#FAF8F5] hover:bg-[#FDE5F4] border border-[#9F2089]/30 text-[#9F2089] text-xs font-bold rounded flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Database className="w-3.5 h-3.5" />
+                      <span>{showPaymentSqlBox ? 'Hide Payment SQL' : 'Supabase Payment SQL'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {showPaymentSqlBox && (
+                  <div className="pt-2 border-t border-[#E8E8E8] space-y-2 animate-fadeIn">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[11px] text-[#555555]">
+                        Supabase SQL Editor me ye SQL run karein taaki <code>public.payment_settings</code> permanent real-time table ban jaye (ultra-low KB URL storage):
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(SUPABASE_PAYMENT_SQL);
+                          setCopiedPaymentSql(true);
+                          showToast('Payment SQL copied to clipboard!');
+                          setTimeout(() => setCopiedPaymentSql(false), 2500);
+                        }}
+                        className="px-3 py-1.5 bg-[#9F2089] hover:bg-[#80182E] text-white text-[11px] font-bold rounded flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedPaymentSql ? 'SQL Copied!' : 'Copy Payment SQL'}</span>
+                      </button>
+                    </div>
+                    <pre className="p-3 bg-[#1E1E2E] text-[#CDD6F4] text-[11px] font-mono rounded-lg overflow-x-auto max-h-60 leading-relaxed">
+                      {SUPABASE_PAYMENT_SQL}
+                    </pre>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment Accounts List */}
+              {paymentAccounts.length === 0 ? (
+                <div className="bg-white p-8 rounded-lg border border-dashed border-[#CCCCCC] text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-[#FDE5F4] text-[#9F2089] flex items-center justify-center mx-auto">
+                    <QrCode className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1 max-w-md mx-auto">
+                    <h3 className="text-sm font-bold text-[#222222]">
+                      Abhi koi Admin QR Scanner / Bank Account add nahi hua hai
+                    </h3>
+                    <p className="text-xs text-[#666666]">
+                      Filhaal default checkout phone <strong>9334808340</strong> active hai. Apna khud ka QR Scanner image/URL, Bank Name aur Phone Number add karne ke liye neeche button dabaye — add karte hi Supabase me save ho jayega!
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openAddPaymentModal}
+                    className="px-4 py-2 bg-[#9F2089] hover:bg-[#80182E] text-white text-xs font-bold rounded inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Add First QR Scanner &amp; Bank</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {paymentAccounts.map((acc) => {
+                    const rowKb = getPaymentRowKb(acc).toFixed(2);
+                    const isActive = acc.id === activePaymentAccount?.id;
+                    return (
+                      <div
+                        key={acc.id}
+                        className={`bg-white rounded-lg border p-4 shadow-xs flex flex-col justify-between gap-3 transition-all ${
+                          isActive
+                            ? 'border-[#9F2089] ring-1 ring-[#9F2089]/40 bg-[#FDE5F4]/10'
+                            : 'border-[#E8E8E8]'
+                        }`}
+                      >
+                        <div className="space-y-3">
+                          {/* Status & KB Row */}
+                          <div className="flex items-center justify-between gap-2">
+                            {isActive ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#038D63] text-white text-[10px] font-bold">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>ACTIVE AT CHECKOUT</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#F4F4F6] text-[#666666] text-[10px] font-bold">
+                                Standby Account
+                              </span>
+                            )}
+                            <span className="text-[10px] font-mono font-bold text-[#038D63] bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                              {rowKb} KB
+                            </span>
+                          </div>
+
+                          {/* QR Scanner + Details */}
+                          <div className="flex items-start gap-3">
+                            <div className="w-24 h-24 rounded-lg border border-[#E8E8E8] bg-white p-1 shrink-0 flex items-center justify-center overflow-hidden">
+                              <img
+                                src={acc.qrImageUrl}
+                                alt={`QR for ${acc.bankName}`}
+                                className="w-full h-full object-contain rounded"
+                              />
+                            </div>
+
+                            <div className="min-w-0 flex-1 space-y-1 text-xs">
+                              <div className="flex items-center gap-1 text-[#4B0013] font-bold">
+                                <Landmark className="w-3.5 h-3.5 text-[#9F2089] shrink-0" />
+                                <span className="truncate">{acc.bankName}</span>
+                              </div>
+                              <div className="flex items-center gap-1 font-mono font-black text-[#9F2089] text-sm">
+                                <Phone className="w-3.5 h-3.5 shrink-0" />
+                                <span>{acc.phone}</span>
+                              </div>
+                              {acc.upiId && (
+                                <div className="text-[11px] text-[#555555] truncate">
+                                  UPI: <strong className="font-mono">{acc.upiId}</strong>
+                                </div>
+                              )}
+                              {acc.accountHolder && (
+                                <div className="text-[11px] text-[#666666] truncate">
+                                  Holder: <strong>{acc.accountHolder}</strong>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="pt-2.5 border-t border-[#E8E8E8] flex flex-wrap items-center justify-between gap-2">
+                          {!isActive ? (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const ok = await onSetActivePaymentAccount(acc.id);
+                                showToast(
+                                  ok
+                                    ? `"${acc.bankName}" (${acc.phone}) ab active hai & Supabase me save ho gaya!`
+                                    : `"${acc.bankName}" ab active hai (local).`,
+                                  ok ? 'success' : 'info'
+                                );
+                              }}
+                              className="px-2.5 py-1.5 bg-[#038D63] hover:bg-[#02704e] text-white text-[11px] font-bold rounded flex items-center gap-1 cursor-pointer"
+                            >
+                              <Check className="w-3 h-3" />
+                              <span>Use This QR</span>
+                            </button>
+                          ) : (
+                            <span className="text-[11px] font-bold text-[#038D63]">
+                              ✓ Customers pay here
+                            </span>
+                          )}
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openEditPaymentModal(acc)}
+                              className="px-2.5 py-1.5 bg-[#FDE5F4] hover:bg-[#fbd0ea] text-[#9F2089] text-[11px] font-bold rounded flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit className="w-3 h-3" />
+                              <span>Change</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPendingConfirm({
+                                  title: 'Delete Payment QR & Account?',
+                                  message: `"${acc.bankName}" (${acc.phone}) Admin Panel aur Supabase se permanently delete ho jayega.`,
+                                  confirmLabel: 'Delete Account',
+                                  onConfirm: async () => {
+                                    const ok = await onDeletePaymentAccount(acc.id);
+                                    showToast(
+                                      ok
+                                        ? 'Payment QR & Bank deleted from Supabase!'
+                                        : 'Deleted locally!',
+                                      ok ? 'success' : 'info'
+                                    );
+                                  }
+                                });
+                              }}
+                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold rounded flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </main>
 
       {/* ============================================================ */}
@@ -3646,6 +4025,175 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   className="px-6 py-2 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold rounded shadow-xs"
                 >
                   Save Banner
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* PAYMENT QR SCANNER, PHONE & BANK ADD / EDIT MODAL            */}
+      {/* ============================================================ */}
+      {isPaymentModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto animate-fadeIn">
+          <div
+            className="bg-white rounded-lg shadow-2xl border border-[#E8E8E8] w-full max-w-lg overflow-hidden my-auto flex flex-col max-h-[92vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#E8E8E8] bg-[#9F2089] text-white">
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-4 h-4" />
+                <h3 className="font-bold text-base">
+                  {editingPaymentId ? 'Change Payment QR & Bank Details' : 'Add Payment QR Scanner & Bank'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="p-1 hover:bg-white/20 rounded-full cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePaymentSubmit} className="p-5 overflow-y-auto space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-[#222222] mb-1">Bank Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={paymentForm.bankName}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, bankName: e.target.value })}
+                    placeholder="e.g. State Bank of India / HDFC / FamPay"
+                    className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[#222222] mb-1">Payment Phone Number *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={paymentForm.phone}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, phone: e.target.value })}
+                    placeholder="e.g. 9334808340"
+                    className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-[#222222] mb-1">UPI ID (Optional)</label>
+                  <input
+                    type="text"
+                    value={paymentForm.upiId}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, upiId: e.target.value })}
+                    placeholder="e.g. 9334808340@ybl"
+                    className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[#222222] mb-1">Account Holder Name</label>
+                  <input
+                    type="text"
+                    value={paymentForm.accountHolder}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, accountHolder: e.target.value })}
+                    placeholder="e.g. RAZVI SHOP"
+                    className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* QR Scanner Upload / Auto URL / Paste URL */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="font-bold text-[#222222]">
+                    QR Scanner Image (Upload, URL or Auto-Generate)
+                  </label>
+                  <span className="text-[10px] font-mono font-bold text-[#038D63]">
+                    {paymentForm.qrImageUrl ? `${getImageSizeKb(paymentForm.qrImageUrl)} KB` : '0.00 KB'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3 p-3 bg-[#FAF8F5] rounded-lg border border-[#E8E8E8]">
+                  <div className="w-24 h-24 rounded border border-[#CCCCCC] bg-white flex items-center justify-center overflow-hidden shrink-0">
+                    {paymentForm.qrImageUrl ? (
+                      <img
+                        src={paymentForm.qrImageUrl}
+                        alt="QR Scanner preview"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <QrCode className="w-8 h-8 text-[#CCCCCC]" />
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <label className="px-3 py-1.5 bg-white border border-[#9F2089] text-[#9F2089] font-bold rounded cursor-pointer hover:bg-[#FDE5F4] inline-flex items-center gap-1">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{qrCompressing ? 'Compressing...' : 'Upload QR Photo (~4 KB)'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleQrImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handleGenerateAutoQrUrl}
+                        className="px-3 py-1.5 bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold rounded hover:bg-emerald-100 inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>Auto UPI QR URL (~0.10 KB)</span>
+                      </button>
+                    </div>
+
+                    <input
+                      type="text"
+                      value={paymentForm.qrImageUrl}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, qrImageUrl: e.target.value })}
+                      placeholder="Ya QR Image ka URL yahan paste karein..."
+                      className="w-full px-2.5 py-1.5 border border-[#CCCCCC] rounded bg-white font-mono text-[11px] focus:border-[#9F2089] focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer font-semibold text-[#222222] bg-[#FAF8F5] p-2.5 rounded border border-[#E8E8E8]">
+                <input
+                  type="checkbox"
+                  checked={paymentForm.active}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, active: e.target.checked })}
+                  className="w-4 h-4 accent-[#9F2089]"
+                />
+                <span>Checkout par turant isi QR Scanner &amp; Bank ko active rakhein</span>
+              </label>
+
+              <div className="pt-3 border-t border-[#E8E8E8] flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  className="px-4 py-2 border border-[#CCCCCC] rounded hover:bg-slate-50 font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={paymentSaving}
+                  className="px-6 py-2 bg-[#9F2089] hover:bg-[#80182E] disabled:opacity-60 text-white font-bold rounded shadow-xs cursor-pointer"
+                >
+                  {paymentSaving
+                    ? 'Saving...'
+                    : editingPaymentId
+                    ? 'Save Changes to Supabase'
+                    : 'Save QR & Bank to Supabase'}
                 </button>
               </div>
             </form>

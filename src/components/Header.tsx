@@ -19,6 +19,7 @@ interface HeaderProps {
   onOpenTracking: () => void;
   onOpenProfile: () => void;
   userName?: string;
+  paymentPhone?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -36,8 +37,10 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenArtisans,
   onOpenTracking,
   onOpenProfile,
-  userName
+  userName,
+  paymentPhone
 }) => {
+  const activePhone = (paymentPhone || '').trim() || '9334808340';
   const [showAppPrompt, setShowAppPrompt] = useState(false);
   const [installFeedback, setInstallFeedback] = useState<string | null>(null);
   const clickCountRef = useRef(0);
@@ -80,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1 font-semibold text-[#038D63]">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Lowest Prices Every Day · Free Delivery & UPI / PhonePe (9334808340)</span>
+              <span>Lowest Prices Every Day · Free Delivery &amp; UPI / PhonePe ({activePhone})</span>
             </span>
           </div>
 
@@ -111,7 +114,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
             <span className="text-[#DDDDDD]">|</span>
             <span className="text-[10px] text-[#888888]">
-              Owner Helpline: <strong className="text-[#9F2089]">9334808340</strong>
+              Owner Helpline: <strong className="text-[#9F2089]">{activePhone}</strong>
             </span>
           </div>
         </div>
