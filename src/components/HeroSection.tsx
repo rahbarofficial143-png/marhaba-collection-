@@ -98,7 +98,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 <Truck className="w-5 h-5 text-[#038D63] shrink-0" />
                 <div>
                   <div className="text-xs font-bold text-[#222222]">Free Delivery Pan-India</div>
-                  <div className="text-[11px] text-[#666666]">Orders above ₹999</div>
+                  <div className="text-[11px] text-[#666666]">All Orders · No Extra Fee</div>
                 </div>
               </div>
 

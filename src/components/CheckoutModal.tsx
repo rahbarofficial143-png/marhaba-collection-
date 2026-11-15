@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, ShieldCheck, CheckCircle2, Truck, Banknote, 
-  Copy, Check, ArrowRight, UserCheck, Landmark, QrCode, ZoomIn
+  Copy, Check, ArrowRight, UserCheck, Landmark, QrCode, ZoomIn, PhoneCall, Video
 } from 'lucide-react';
 import { CartItem, Order, UserProfile, PaymentAccount } from '../types';
 
@@ -89,8 +89,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     (sum, item) => sum + item.product.price * item.quantity,
     0
   );
-  const deliveryFee = itemsTotal >= 999 ? 0 : 99;
-  const finalTotal = Math.max(0, itemsTotal - couponDiscount + deliveryFee);
+  const deliveryFee = 0;
+  const finalTotal = Math.max(0, itemsTotal - couponDiscount);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -134,6 +134,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const activeQrImage =
     customQrUrl ||
     `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(upiUrl)}`;
+
+  // Admin Helpline for Pre-Payment Voice / WhatsApp Video Confirmation
+  const adminHelplinePhone = '9334808340';
+  const audioCallUrl = `tel:${adminHelplinePhone}`;
+  const whatsappVideoUrl = `https://wa.me/91${adminHelplinePhone}?text=${encodeURIComponent(
+    `Assalamu Alaikum! Main RAZVI SHOP par ₹${finalTotal.toLocaleString('en-IN')} ka order (${items.length} item) confirm karne ke liye baat/video call karna chahta hoon.`
+  )}`;
 
   const handlePlaceOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -559,7 +566,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   <div className="space-y-1.5 text-xs text-[#555555]">
                     <div className="flex justify-between">
                       <span>Items Subtotal</span>
-                      <span className="tabular-nums">₹{itemsTotal.toLocaleString('en-IN')}</span>
+                      <span className="tabular-nums font-semibold text-[#222222]">₹{itemsTotal.toLocaleString('en-IN')}</span>
                     </div>
                     {couponDiscount > 0 && (
                       <div className="flex justify-between text-[#9F2089] font-medium">
@@ -567,16 +574,44 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         <span className="tabular-nums">-₹{couponDiscount.toLocaleString('en-IN')}</span>
                       </div>
                     )}
-                    <div className="flex justify-between">
-                      <span>Pan-India Delivery</span>
-                      <span>
-                        {deliveryFee === 0 ? (
-                          <strong className="text-emerald-700">FREE</strong>
-                        ) : (
-                          `₹${deliveryFee}`
-                        )}
-                      </span>
+
+                    {/* Pre-Payment Admin / Owner Confirmation (Audio Dialer & WhatsApp Video Call) */}
+                    <div className="my-2.5 p-3 rounded-lg bg-white border border-[#9F2089]/30 shadow-2xs space-y-2">
+                      <div className="text-[11px] font-bold text-[#4B0013] leading-snug">
+                        Aap payment karne se pehle ek baar Admin / Owner se baat karke order confirm kar lein:
+                      </div>
+                      <div className="text-[10px] font-mono font-bold text-[#666666]">
+                        Admin Helpline: <span className="text-[#9F2089]">{adminHelplinePhone}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 pt-0.5">
+                        <a
+                          href={audioCallUrl}
+                          className="px-2.5 py-2 rounded-md bg-[#9F2089] hover:bg-[#80182E] text-white font-bold text-[11px] flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                        >
+                          <PhoneCall className="w-3.5 h-3.5 shrink-0" />
+                          <span>Audio Call</span>
+                        </a>
+
+                        <a
+                          href={whatsappVideoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-2 rounded-md bg-[#25D366] hover:bg-[#1EB954] text-white font-bold text-[11px] flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            className="w-3.5 h-3.5 shrink-0"
+                            aria-hidden="true"
+                          >
+                            <path d="M12.031 2c-5.516 0-9.969 4.453-9.969 9.969 0 1.766.469 3.484 1.344 5l-1.406 5.156 5.281-1.375c1.469.797 3.109 1.219 4.75 1.219 5.516 0 9.969-4.453 9.969-9.969S17.547 2 12.031 2zm5.813 14.125c-.25.703-1.438 1.344-2 1.438-.516.078-1.188.109-1.906-.125-.438-.141-1-.328-1.719-.641-3.031-1.313-5-4.375-5.156-4.578-.141-.203-1.234-1.641-1.234-3.125s.781-2.219 1.063-2.516c.281-.297.609-.375.813-.375h.594c.188 0 .438-.078.688.516.25.609.859 2.094.938 2.25.078.156.125.344.031.547-.109.203-.156.328-.313.5-.156.172-.328.391-.469.516-.156.141-.313.297-.141.594.172.297.766 1.266 1.656 2.047 1.141 1.016 2.094 1.328 2.391 1.484.297.141.469.125.641-.078.172-.203.75-.875.953-1.172.203-.297.406-.25.688-.141.281.094 1.781.844 2.078.984.297.156.5.219.578.344.078.125.078.734-.172 1.438z" />
+                          </svg>
+                          <Video className="w-3.5 h-3.5 shrink-0" />
+                          <span>Video Call</span>
+                        </a>
+                      </div>
                     </div>
+
                     <div className="border-t border-[#E8E8E8] pt-2 flex justify-between text-base font-extrabold text-[#222222]">
                       <span>Total Amount</span>
                       <span className="text-[#9F2089] tabular-nums">

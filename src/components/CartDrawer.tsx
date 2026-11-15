@@ -43,10 +43,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     couponDiscount = itemsTotal >= 1500 ? 200 : 0;
   }
 
-  const freeDeliveryThreshold = 999;
-  const isFreeDelivery = itemsTotal >= freeDeliveryThreshold;
-  const deliveryFee = items.length === 0 ? 0 : isFreeDelivery ? 0 : 99;
-  const finalTotal = Math.max(0, itemsTotal - couponDiscount + deliveryFee);
+  const deliveryFee = 0;
+  const finalTotal = Math.max(0, itemsTotal - couponDiscount);
 
   const handleApplyCoupon = (codeToApply?: string) => {
     const code = (codeToApply || couponCode).trim().toUpperCase();
@@ -94,30 +92,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           </button>
         </div>
 
-        {/* Free Shipping Progress Strip */}
+        {/* Zero Delivery Charge Strip */}
         <div className="bg-[#FAF8F5] px-5 py-2.5 border-b border-[#EFEAE2]">
-          {isFreeDelivery ? (
-            <div className="text-xs font-semibold text-emerald-800 flex items-center gap-1.5">
-              <span>🎉 Congratulations! You have unlocked Free Pan-India Delivery.</span>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <div className="text-xs text-[#554243] flex items-center justify-between">
-                <span>
-                  Add <strong>₹{(freeDeliveryThreshold - itemsTotal).toLocaleString('en-IN')}</strong> more for Free Shipping
-                </span>
-                <span className="font-bold text-[#6B1426]">
-                  {Math.round((itemsTotal / freeDeliveryThreshold) * 100)}%
-                </span>
-              </div>
-              <div className="w-full bg-[#E2DCD5] h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="bg-[#6B1426] h-full transition-all duration-300"
-                  style={{ width: `${Math.min(100, (itemsTotal / freeDeliveryThreshold) * 100)}%` }}
-                />
-              </div>
-            </div>
-          )}
+          <div className="text-xs font-semibold text-emerald-800 flex items-center gap-1.5">
+            <span>🎉 Zero Delivery Charge · Only Product Price Payable!</span>
+          </div>
         </div>
 
         {/* Items List */}
@@ -303,16 +282,6 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <span className="tabular-nums">-₹{couponDiscount.toLocaleString('en-IN')}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span>Pan-India Delivery</span>
-                <span>
-                  {deliveryFee === 0 ? (
-                    <strong className="text-emerald-700">FREE</strong>
-                  ) : (
-                    `₹${deliveryFee}`
-                  )}
-                </span>
-              </div>
               <div className="border-t border-[#EFEAE2] pt-2 flex justify-between text-sm font-extrabold text-[#111C2D]">
                 <span>Total Payable</span>
                 <span className="text-base text-[#4B0013] tabular-nums">
