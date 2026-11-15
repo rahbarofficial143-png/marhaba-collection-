@@ -1827,7 +1827,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         {o.utrNumber && (
                           <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[11px] font-bold">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>UPI UTR / Reference: <strong>{o.utrNumber}</strong> (Paid to 9334808340)</span>
+                            <span>
+                              {o.utrNumber === 'WHATSAPP-SCREENSHOT-PROOF'
+                                ? `WhatsApp Payment Screenshot Proof Verified (Paid to ${o.paymentPhone || '9334808340'})`
+                                : `UPI UTR / Reference: ${o.utrNumber} (Paid to ${o.paymentPhone || '9334808340'})`}
+                            </span>
                           </div>
                         )}
                       </div>

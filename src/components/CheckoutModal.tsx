@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, ShieldCheck, CheckCircle2, Truck, Banknote, 
-  Copy, Check, ArrowRight, UserCheck, Landmark, QrCode, ZoomIn, PhoneCall, Video
+  Copy, Check, ArrowRight, UserCheck, Landmark, QrCode, ZoomIn, PhoneCall, Video,
+  Camera, Image as ImageIcon, Send
 } from 'lucide-react';
 import { CartItem, Order, UserProfile, PaymentAccount } from '../types';
 
@@ -60,22 +61,79 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [formData, setFormData] = useState(() => buildAddressFromProfile(userProfile));
 
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upi' | 'card'>('upi');
-  const [utrNumber, setUtrNumber] = useState('');
+  const [showScreenshotOptions, setShowScreenshotOptions] = useState(false);
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string>('');
+  const [screenshotSent, setScreenshotSent] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [qrZoomed, setQrZoomed] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const screenshotSectionRef = useRef<HTMLDivElement | null>(null);
+  const submitButtonRef = useRef<HTMLButtonElement | null>(null);
+  const waitingWhatsappReturnRef = useRef(false);
+  const whatsappReturnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       setStep('form');
       setPlacedOrder(null);
-      setUtrNumber('');
+      setShowScreenshotOptions(false);
+      setScreenshotFile(null);
+      setScreenshotPreview('');
+      setScreenshotSent(false);
+      waitingWhatsappReturnRef.current = false;
+      if (whatsappReturnTimerRef.current) clearTimeout(whatsappReturnTimerRef.current);
       setErrors({});
       setQrZoomed(false);
       setFormData(buildAddressFromProfile(userProfile));
     }
   }, [isOpen, userProfile]);
+
+  // Clean up object URL on unmount / change
+  useEffect(() => {
+    return () => {
+      if (screenshotPreview && screenshotPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(screenshotPreview);
+      }
+    };
+  }, [screenshotPreview]);
+
+  // Auto-detect when customer returns back to the app after sending screenshot in WhatsApp
+  useEffect(() => {
+    const completeReturn = () => {
+      if (!waitingWhatsappReturnRef.current) return;
+      waitingWhatsappReturnRef.current = false;
+      if (whatsappReturnTimerRef.current) {
+        clearTimeout(whatsappReturnTimerRef.current);
+        whatsappReturnTimerRef.current = null;
+      }
+      setScreenshotSent(true);
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.screenshot;
+        return next;
+      });
+      setTimeout(() => {
+        submitButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 250);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        completeReturn();
+      }
+    };
+
+    window.addEventListener('focus', completeReturn);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', completeReturn);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (whatsappReturnTimerRef.current) clearTimeout(whatsappReturnTimerRef.current);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -105,11 +163,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     if (!formData.city.trim()) newErrors.city = 'City required';
     if (!formData.state.trim()) newErrors.state = 'State required';
 
-    if (paymentMethod === 'upi' && !utrNumber.trim()) {
-      newErrors.utr = 'Please enter 12-digit UPI Reference / UTR Number after payment';
+    if (paymentMethod === 'upi' && !screenshotSent) {
+      newErrors.screenshot = 'Proof ke liye WhatsApp icon par click karke payment screenshot bhejein.';
     }
 
     setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0 && newErrors.screenshot && Object.keys(newErrors).length === 1) {
+      screenshotSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     return Object.keys(newErrors).length === 0;
   };
 
@@ -135,12 +196,65 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     customQrUrl ||
     `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(upiUrl)}`;
 
-  // Admin Helpline for Pre-Payment Voice / WhatsApp Video Confirmation
+  // Admin Helpline for Voice / WhatsApp Video Confirmation & Screenshot Proof (Owner: 9334808340)
   const adminHelplinePhone = '9334808340';
   const audioCallUrl = `tel:${adminHelplinePhone}`;
   const whatsappVideoUrl = `https://wa.me/91${adminHelplinePhone}?text=${encodeURIComponent(
     `Assalamu Alaikum! Main RAZVI SHOP par ₹${finalTotal.toLocaleString('en-IN')} ka order (${items.length} item) confirm karne ke liye baat/video call karna chahta hoon.`
   )}`;
+
+  const itemTitlesSummary = items
+    .map((item) => `${item.product.title} (${item.selectedSize} x${item.quantity})`)
+    .join(', ');
+  const whatsappScreenshotUrl = `https://wa.me/91${adminHelplinePhone}?text=${encodeURIComponent(
+    `Assalamu Alaikum! RAZVI SHOP Payment Screenshot Proof:\n• Name: ${formData.fullName || 'Customer'}\n• Phone: ${formData.phone || '-'}\n• Amount Paid: ₹${finalTotal.toLocaleString('en-IN')}\n• Paid To: ${merchantBank} (${merchantPhone})\n• Order Items: ${itemTitlesSummary}\n\n(Screenshot gallery se select karke saath me send kar rahe hain)`
+  )}`;
+
+  const handleSelectScreenshot = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (screenshotPreview && screenshotPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(screenshotPreview);
+    }
+    const blobUrl = URL.createObjectURL(file);
+    setScreenshotFile(file);
+    setScreenshotPreview(blobUrl);
+    setScreenshotSent(false);
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.screenshot;
+      return next;
+    });
+    e.target.value = '';
+  };
+
+  const handleLaunchWhatsAppSend = async () => {
+    waitingWhatsappReturnRef.current = true;
+    // Try copying screenshot image to clipboard automatically if supported (helps quick paste in WhatsApp)
+    if (screenshotFile && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+      try {
+        const mimeType = screenshotFile.type || 'image/png';
+        if (mimeType.startsWith('image/')) {
+          await navigator.clipboard.write([new ClipboardItem({ [mimeType]: screenshotFile })]);
+        }
+      } catch {
+        // Ignore clipboard errors on unsupported mobile browsers
+      }
+    }
+    // Fallback if returning focus doesn't fire automatically in embedded browsers
+    if (whatsappReturnTimerRef.current) clearTimeout(whatsappReturnTimerRef.current);
+    whatsappReturnTimerRef.current = setTimeout(() => {
+      if (waitingWhatsappReturnRef.current) {
+        waitingWhatsappReturnRef.current = false;
+        setScreenshotSent(true);
+        setErrors((prev) => {
+          const next = { ...prev };
+          delete next.screenshot;
+          return next;
+        });
+      }
+    }, 2000);
+  };
 
   const handlePlaceOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,7 +289,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       status: 'confirmed',
       trackingNumber: trackingNum,
       estimatedDeliveryDate: formattedDelivery,
-      utrNumber: paymentMethod === 'upi' ? utrNumber : undefined,
+      utrNumber: paymentMethod === 'upi' ? 'WHATSAPP-SCREENSHOT-PROOF' : undefined,
       paymentPhone: merchantPhone
     };
 
@@ -471,22 +585,133 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                             </div>
                           </div>
 
-                          {/* UTR / Transaction Reference Input */}
-                          <div className="bg-white p-3 rounded border border-[#CCCCCC] space-y-1">
-                            <label className="block text-xs font-bold text-[#222222]">
-                              Payment ke baad 12-digit UTR / UPI Ref Number yahan likhein: *
-                            </label>
-                            <input
-                              type="text"
-                              value={utrNumber}
-                              onChange={(e) => setUtrNumber(e.target.value)}
-                              placeholder="e.g. 412345678901 (from your payment receipt)"
-                              className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none font-mono text-xs font-bold"
-                            />
-                            {errors.utr && <p className="text-[11px] text-red-600 font-bold">{errors.utr}</p>}
-                            <span className="text-[10px] text-[#888888] block">
-                              Payment complete hone par aapke app mein 12-digit UPI Transaction / UTR number milta hai.
-                            </span>
+                          {/* WhatsApp Payment Screenshot Proof Column (Replaces 12-Digit UTR) */}
+                          <div
+                            ref={screenshotSectionRef}
+                            className="bg-white p-3.5 rounded-lg border-2 border-[#25D366]/45 space-y-3 shadow-2xs"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-xs font-bold text-[#222222]">
+                                  Send Your Screenshot *
+                                </div>
+                                <p className="text-[11px] text-[#555555] mt-0.5">
+                                  Proof ke liye apna payment screenshot ismein bhejein (Owner WhatsApp: <strong className="font-mono text-[#075E54]">{adminHelplinePhone}</strong>)
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Step 1: Clickable WhatsApp Icon Button */}
+                            {!screenshotPreview && !screenshotSent && (
+                              <button
+                                type="button"
+                                onClick={() => setShowScreenshotOptions((prev) => !prev)}
+                                className="w-full py-2.5 px-3 rounded-lg bg-[#25D366] hover:bg-[#1EB954] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  className="w-5 h-5 shrink-0"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M12.031 2c-5.516 0-9.969 4.453-9.969 9.969 0 1.766.469 3.484 1.344 5l-1.406 5.156 5.281-1.375c1.469.797 3.109 1.219 4.75 1.219 5.516 0 9.969-4.453 9.969-9.969S17.547 2 12.031 2zm5.813 14.125c-.25.703-1.438 1.344-2 1.438-.516.078-1.188.109-1.906-.125-.438-.141-1-.328-1.719-.641-3.031-1.313-5-4.375-5.156-4.578-.141-.203-1.234-1.641-1.234-3.125s.781-2.219 1.063-2.516c.281-.297.609-.375.813-.375h.594c.188 0 .438-.078.688.516.25.609.859 2.094.938 2.25.078.156.125.344.031.547-.109.203-.156.328-.313.5-.156.172-.328.391-.469.516-.156.141-.313.297-.141.594.172.297.766 1.266 1.656 2.047 1.141 1.016 2.094 1.328 2.391 1.484.297.141.469.125.641-.078.172-.203.75-.875.953-1.172.203-.297.406-.25.688-.141.281.094 1.781.844 2.078.984.297.156.5.219.578.344.078.125.078.734-.172 1.438z" />
+                                </svg>
+                                <span>Send Your Screenshot (WhatsApp Proof)</span>
+                              </button>
+                            )}
+
+                            {/* Step 2: 2 Options after clicking WhatsApp Icon — Photo or Gallery */}
+                            {showScreenshotOptions && !screenshotPreview && !screenshotSent && (
+                              <div className="p-2.5 bg-[#FAF8F5] rounded-lg border border-[#E8E8E8] space-y-2 animate-fadeIn">
+                                <div className="text-[11px] font-bold text-[#222222] text-center">
+                                  Option Chunein (Photo ya Gallery):
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <label className="py-2.5 px-3 bg-white hover:bg-[#FDE5F4]/40 border border-[#9F2089]/40 rounded-md flex flex-col items-center justify-center gap-1 cursor-pointer text-[#9F2089] font-bold text-[11px] shadow-2xs transition-colors">
+                                    <Camera className="w-4 h-4" />
+                                    <span>Photo / Camera</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      capture="environment"
+                                      onChange={handleSelectScreenshot}
+                                      className="hidden"
+                                    />
+                                  </label>
+
+                                  <label className="py-2.5 px-3 bg-white hover:bg-[#E7F8EE] border border-[#25D366]/50 rounded-md flex flex-col items-center justify-center gap-1 cursor-pointer text-[#075E54] font-bold text-[11px] shadow-2xs transition-colors">
+                                    <ImageIcon className="w-4 h-4 text-[#25D366]" />
+                                    <span>Gallery Se Chunein</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={handleSelectScreenshot}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Step 3: Screenshot Preview + Direct Send to Owner WhatsApp (9334808340) */}
+                            {screenshotPreview && !screenshotSent && (
+                              <div className="p-3 bg-[#FAF8F5] rounded-lg border border-[#25D366]/50 space-y-2.5 animate-fadeIn">
+                                <div className="flex items-center gap-3">
+                                  <img
+                                    src={screenshotPreview}
+                                    alt="Selected payment screenshot"
+                                    className="w-16 h-20 object-cover rounded border border-[#CCCCCC] bg-white shrink-0"
+                                  />
+                                  <div className="flex-1 min-w-0 space-y-1">
+                                    <div className="text-xs font-bold text-[#222222] truncate">
+                                      {screenshotFile?.name || 'Payment Screenshot Ready'}
+                                    </div>
+                                    <p className="text-[11px] text-[#555555]">
+                                      Screenshot select ho gaya hai! Ab niche <strong>Send on WhatsApp</strong> dabakar Owner (<strong>{adminHelplinePhone}</strong>) ko bhejein.
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setScreenshotPreview('');
+                                        setScreenshotFile(null);
+                                        setShowScreenshotOptions(true);
+                                      }}
+                                      className="text-[10px] font-bold text-[#9F2089] hover:underline cursor-pointer"
+                                    >
+                                      Change Screenshot
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <a
+                                  href={whatsappScreenshotUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={handleLaunchWhatsAppSend}
+                                  className="w-full py-2.5 px-3 rounded-md bg-[#25D366] hover:bg-[#1EB954] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors"
+                                >
+                                  <Send className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Send Screenshot to WhatsApp ({adminHelplinePhone})</span>
+                                </a>
+                              </div>
+                            )}
+
+                            {/* Step 4: Returned from WhatsApp -> Ready to Submit Success Banner */}
+                            {screenshotSent && (
+                              <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg space-y-1.5 animate-fadeIn">
+                                <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                  <span>Aapka screenshot successfully send ho gaya hai!</span>
+                                </div>
+                                <p className="text-[11px] text-emerald-700 leading-relaxed">
+                                  Ab aap niche <strong>Submit Payment &amp; Confirm Order</strong> button par click karke apna order confirm kar sakte hain.
+                                </p>
+                              </div>
+                            )}
+
+                            {errors.screenshot && (
+                              <p className="text-[11px] text-red-600 font-bold">{errors.screenshot}</p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -622,11 +847,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </div>
 
                 <div className="space-y-2 pt-2">
+                  {paymentMethod === 'upi' && screenshotSent && (
+                    <div className="p-2 rounded bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Screenshot send ho gaya hai — ab aap Submit kar sakte hain!</span>
+                    </div>
+                  )}
+
                   <button
+                    ref={submitButtonRef}
                     type="submit"
-                    className="w-full py-3 bg-[#9F2089] hover:bg-[#80182E] text-white text-xs sm:text-sm font-bold rounded-md transition-all shadow-md active:scale-98 flex items-center justify-center gap-2"
+                    className="w-full py-3 bg-[#9F2089] hover:bg-[#80182E] text-white text-xs sm:text-sm font-bold rounded-md transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <span>Submit Payment & Confirm Order (₹{finalTotal.toLocaleString('en-IN')})</span>
+                    <span>Submit Payment &amp; Confirm Order (₹{finalTotal.toLocaleString('en-IN')})</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
 
@@ -645,16 +878,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               <CheckCircle2 className="w-10 h-10" />
             </div>
 
-            <div className="space-y-1 max-w-md">
+            <div className="space-y-1.5 max-w-md">
               <h3 className="font-editorial text-2xl font-bold text-[#222222]">
-                Order Confirmed!
+                Aapka Order Confirm Ho Gaya Hai!
               </h3>
               <p className="text-xs text-[#555555]">
-                Order <strong>#{placedOrder?.id}</strong> is registered with RAZVI SHOP.
+                Order <strong>#{placedOrder?.id}</strong> is successfully confirmed with RAZVI SHOP.
               </p>
               {placedOrder?.utrNumber && (
-                <div className="p-2 bg-emerald-50 text-emerald-800 rounded border border-emerald-200 text-xs font-semibold mt-2">
-                  Payment verified via UPI / QR to <strong>{placedOrder.paymentPhone || merchantPhone}</strong> ({merchantBank}) · UTR: {placedOrder.utrNumber}
+                <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded border border-emerald-200 text-xs font-semibold mt-2">
+                  Payment screenshot proof sent on WhatsApp to <strong>{adminHelplinePhone}</strong> ({merchantBank} · {placedOrder.paymentPhone || merchantPhone})
                 </div>
               )}
             </div>
