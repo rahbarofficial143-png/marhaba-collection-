@@ -10,7 +10,10 @@ import {
   decompressReviewTextAsync
 } from './reviewCodec';
 import {
+  ADMIN_OWNER_USER_ID,
   buildStableUserId,
+  normalizeSecretCode,
+  isValidSecretCode,
   encodeCompactUserAddress,
   encodeCompactUserAddressAsync,
   decodeCompactUserAddressSync,
@@ -60,8 +63,8 @@ BEGIN
 END $$;`;
 
 export const SUPABASE_USERS_SQL = `-- ==============================================================================
--- RAZVI SHOP: STORE USERS TABLE SQL (Real-Time User Directory & Ultra-Low KB)
--- Run this in Supabase SQL Editor to track registered users & profile/address updates
+-- RAZVI SHOP: STORE USERS TABLE SQL (Real-Time User Directory, 6-Digit Secret Code & Ultra-Low KB)
+-- Run this in Supabase SQL Editor to track registered users, secret codes & profile/address updates
 -- ==============================================================================
 
 CREATE TABLE IF NOT EXISTS public.store_users (
@@ -69,12 +72,15 @@ CREATE TABLE IF NOT EXISTS public.store_users (
     phone TEXT NOT NULL,
     full_name TEXT NOT NULL,
     age TEXT DEFAULT '',
+    secret_code TEXT DEFAULT '',
     packed_data TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+ALTER TABLE public.store_users ADD COLUMN IF NOT EXISTS secret_code TEXT DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_store_users_phone ON public.store_users (phone);
+CREATE INDEX IF NOT EXISTS idx_store_users_secret_code ON public.store_users (secret_code);
 CREATE INDEX IF NOT EXISTS idx_store_users_updated_at ON public.store_users (updated_at DESC);
 
 ALTER TABLE public.store_users ENABLE ROW LEVEL SECURITY;
@@ -338,18 +344,21 @@ DROP POLICY IF EXISTS "Allow All Product Reviews" ON public.product_reviews;
 CREATE POLICY "Allow All Product Reviews" ON public.product_reviews FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
 
 -- ==============================================================================
--- 9. STORE USERS TABLE (Real-Time Users & Ultra-Compact Address Storage)
+-- 9. STORE USERS TABLE (Real-Time Users, 6-Digit Secret Codes & Ultra-Compact Address Storage)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.store_users (
     id TEXT PRIMARY KEY,
     phone TEXT NOT NULL,
     full_name TEXT NOT NULL,
     age TEXT DEFAULT '',
+    secret_code TEXT DEFAULT '',
     packed_data TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+ALTER TABLE public.store_users ADD COLUMN IF NOT EXISTS secret_code TEXT DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_store_users_phone ON public.store_users (phone);
+CREATE INDEX IF NOT EXISTS idx_store_users_secret_code ON public.store_users (secret_code);
 CREATE INDEX IF NOT EXISTS idx_store_users_updated_at ON public.store_users (updated_at DESC);
 ALTER TABLE public.store_users ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow All Store Users" ON public.store_users;
@@ -837,12 +846,14 @@ export function rowToOrder(row: any): Order {
 }
 
 export function userToRow(u: UserProfile): Record<string, any> {
+  const cleanCode = normalizeSecretCode(u.secretCode || '');
   return {
-    id: buildStableUserId(u.phone, u.id),
+    id: buildStableUserId(u.phone, u.id, u.role),
     phone: u.phone.trim(),
     full_name: u.fullName.trim(),
     age: (u.age || '').trim(),
-    packed_data: encodeCompactUserAddress(u),
+    secret_code: cleanCode,
+    packed_data: encodeCompactUserAddress({ ...u, secretCode: cleanCode }),
     created_at: u.createdAt || new Date().toISOString(),
     updated_at: u.updatedAt || new Date().toISOString()
   };
@@ -851,6 +862,13 @@ export function userToRow(u: UserProfile): Record<string, any> {
 export function rowToUser(row: any): UserProfile {
   const packed = typeof row.packed_data === 'string' ? row.packed_data : '';
   const addr = decodeCompactUserAddressSync(packed);
+  const colSecret = normalizeSecretCode(row.secret_code || '');
+  const resolvedSecret = isValidSecretCode(colSecret)
+    ? colSecret
+    : isValidSecretCode(addr.secretCode)
+    ? addr.secretCode
+    : colSecret || addr.secretCode || undefined;
+
   return {
     id: row.id,
     fullName: row.full_name || 'Customer',
@@ -862,6 +880,8 @@ export function rowToUser(row: any): UserProfile {
     city: addr.city || row.city || '',
     state: addr.state || row.state || '',
     pincode: addr.pincode || row.pincode || '',
+    secretCode: resolvedSecret,
+    role: row.id === ADMIN_OWNER_USER_ID ? 'admin' : addr.role || 'user',
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || row.created_at || new Date().toISOString()
   };
@@ -871,6 +891,9 @@ export async function rowToUserAsync(row: any): Promise<UserProfile> {
   const base = rowToUser(row);
   if (typeof row.packed_data === 'string' && row.packed_data.startsWith('uz1:')) {
     const addr = await decodeCompactUserAddressAsync(row.packed_data);
+    const resolvedSecret = isValidSecretCode(base.secretCode)
+      ? base.secretCode
+      : addr.secretCode || base.secretCode;
     return {
       ...base,
       buildingOrVillage: addr.buildingOrVillage || base.buildingOrVillage,
@@ -878,7 +901,9 @@ export async function rowToUserAsync(row: any): Promise<UserProfile> {
       landmark: addr.landmark || base.landmark,
       city: addr.city || base.city,
       state: addr.state || base.state,
-      pincode: addr.pincode || base.pincode
+      pincode: addr.pincode || base.pincode,
+      secretCode: resolvedSecret,
+      role: row.id === ADMIN_OWNER_USER_ID ? 'admin' : addr.role || base.role
     };
   }
   return base;
@@ -1417,6 +1442,220 @@ export async function deleteUserFromSupabase(userId: string, config?: SupabaseCo
     console.error('Failed deleting user from Supabase', err);
     return false;
   }
+}
+
+/**
+ * Login / Restore User OR Admin profile immediately using strictly 6-digit Secret Code.
+ * Checks Express backend (.data + Supabase) first, then falls back to direct Supabase & local cache.
+ */
+export async function loginWithSecretCode(
+  rawCode: string,
+  localUsers: UserProfile[] = [],
+  config?: SupabaseConfig
+): Promise<{ ok: boolean; role?: 'admin' | 'user'; profile?: UserProfile; error?: string }> {
+  const cleanCode = normalizeSecretCode(rawCode);
+  if (!isValidSecretCode(cleanCode)) {
+    return { ok: false, error: 'Sirf 6 digit ka numeric Secret Code enter karein.' };
+  }
+
+  // 1. Check server endpoint (.data admin-account + live Supabase store_users)
+  try {
+    const res = await fetch('/api/secret-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ secretCode: cleanCode })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.ok && data?.profile) {
+        return {
+          ok: true,
+          role: data.role === 'admin' ? 'admin' : 'user',
+          profile: data.profile
+        };
+      }
+    }
+  } catch {
+    // Fallback to direct Supabase query & local directory
+  }
+
+  // 2. Direct Supabase query fallback
+  try {
+    const cfg = config || getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      const remoteUsers = await fetchUsersFromSupabase(cfg);
+      if (Array.isArray(remoteUsers)) {
+        const match = remoteUsers.find((u) => normalizeSecretCode(u.secretCode || '') === cleanCode);
+        if (match) {
+          return {
+            ok: true,
+            role: match.role === 'admin' || match.id === ADMIN_OWNER_USER_ID ? 'admin' : 'user',
+            profile: match
+          };
+        }
+      }
+    }
+  } catch {
+    // Continue to localUsers fallback
+  }
+
+  // 3. Offline / local directory fallback
+  const localMatch = localUsers.find((u) => normalizeSecretCode(u.secretCode || '') === cleanCode);
+  if (localMatch) {
+    return {
+      ok: true,
+      role: localMatch.role === 'admin' || localMatch.id === ADMIN_OWNER_USER_ID ? 'admin' : 'user',
+      profile: localMatch
+    };
+  }
+
+  return {
+    ok: false,
+    error: 'Ye 6-digit Secret Code match nahi hua. Kripya sahi code daalein.'
+  };
+}
+
+/**
+ * Checks whether a 6-digit secret code is already in use by another user/admin.
+ */
+export async function checkSecretCodeDuplicate(
+  rawCode: string,
+  excludeUserId?: string,
+  localUsers: UserProfile[] = [],
+  config?: SupabaseConfig
+): Promise<boolean> {
+  const cleanCode = normalizeSecretCode(rawCode);
+  if (!isValidSecretCode(cleanCode)) return false;
+
+  const checkList = (list: UserProfile[]) =>
+    list.some((u) => {
+      const uid = buildStableUserId(u.phone, u.id, u.role);
+      if (excludeUserId && uid === excludeUserId) return false;
+      return normalizeSecretCode(u.secretCode || '') === cleanCode;
+    });
+
+  if (checkList(localUsers)) return true;
+
+  try {
+    const res = await fetch('/api/check-secret-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ secretCode: cleanCode, excludeUserId: excludeUserId || '' })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.available === false) return true;
+    }
+  } catch {
+    // Fallback to direct Supabase check
+  }
+
+  try {
+    const cfg = config || getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      const remote = await fetchUsersFromSupabase(cfg);
+      if (Array.isArray(remote) && checkList(remote)) {
+        return true;
+      }
+    }
+  } catch {
+    // Ignore network error
+  }
+  return false;
+}
+
+/**
+ * Fetch Admin profile + 6-digit secret code from server / Supabase (authorized Admin session only).
+ */
+export async function fetchAdminProfileRecord(config?: SupabaseConfig): Promise<UserProfile | null> {
+  try {
+    const res = await fetch('/api/admin-profile', {
+      method: 'GET',
+      headers: { 'x-admin-session': 'authorized' },
+      cache: 'no-store'
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.ok && data?.profile) {
+        return data.profile as UserProfile;
+      }
+    }
+  } catch {
+    // Fallback to Supabase store_users row
+  }
+
+  try {
+    const cfg = config || getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      const remote = await fetchUsersFromSupabase(cfg);
+      const adminRow = remote?.find((u) => u.id === ADMIN_OWNER_USER_ID || u.role === 'admin');
+      if (adminRow) return adminRow;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
+ * Save Admin profile + 6-digit secret code to server (.data) AND Supabase store_users immediately.
+ */
+export async function saveAdminProfileRecord(
+  profile: UserProfile,
+  config?: SupabaseConfig
+): Promise<{ ok: boolean; profile?: UserProfile; syncedToSupabase?: boolean }> {
+  const cleanCode = normalizeSecretCode(profile.secretCode || '');
+  if (!isValidSecretCode(cleanCode)) {
+    return { ok: false };
+  }
+
+  const enriched: UserProfile = {
+    ...profile,
+    id: ADMIN_OWNER_USER_ID,
+    role: 'admin',
+    secretCode: cleanCode,
+    updatedAt: new Date().toISOString()
+  };
+
+  let savedOnServer = false;
+  let syncedToSupabase = false;
+  let resultProfile = enriched;
+
+  try {
+    const res = await fetch('/api/admin-profile', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-session': 'authorized'
+      },
+      body: JSON.stringify(enriched)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.ok && data?.profile) {
+        savedOnServer = true;
+        syncedToSupabase = Boolean(data.syncedToSupabase);
+        resultProfile = data.profile;
+      }
+    }
+  } catch {
+    // Direct Supabase fallback below
+  }
+
+  if (!syncedToSupabase) {
+    const cfg = config || getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      syncedToSupabase = await saveUserToSupabase(enriched, cfg);
+    }
+  }
+
+  return {
+    ok: savedOnServer || syncedToSupabase,
+    profile: resultProfile,
+    syncedToSupabase
+  };
 }
 
 /**

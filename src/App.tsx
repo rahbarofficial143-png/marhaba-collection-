@@ -39,12 +39,15 @@ import {
   fetchUsersFromSupabase,
   saveUserToSupabase,
   deleteUserFromSupabase,
+  loginWithSecretCode,
+  fetchAdminProfileRecord,
+  saveAdminProfileRecord,
   fetchPaymentAccountsFromSupabase,
   savePaymentAccountToSupabase,
   syncPaymentAccountsToSupabase,
   deletePaymentAccountFromSupabase
 } from './lib/supabase';
-import { buildStableUserId } from './lib/userCodec';
+import { ADMIN_OWNER_USER_ID, buildStableUserId } from './lib/userCodec';
 import { buildPaymentAccountId } from './lib/paymentCodec';
 
 // One-time cleanup of legacy preloaded demo items/images from localStorage
@@ -80,6 +83,18 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState<boolean>(false);
   const [adminToast, setAdminToast] = useState<string | null>(null);
+  const [adminProfile, setAdminProfile] = useState<UserProfile | null>(() => {
+    try {
+      const stored = localStorage.getItem('razvi_admin_profile');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.fullName) return parsed;
+      }
+    } catch {
+      // ignore storage error
+    }
+    return null;
+  });
 
   // Persistent Categories State
   const [categories, setCategories] = useState<Category[]>(() => {
@@ -277,6 +292,33 @@ export default function App() {
 
       if (remoteUsers !== null) {
         setStoreUsers(remoteUsers);
+        const remoteAdmin = remoteUsers.find(
+          (u) => u.id === ADMIN_OWNER_USER_ID || u.role === 'admin'
+        );
+        if (remoteAdmin) {
+          setAdminProfile(remoteAdmin);
+          try {
+            localStorage.setItem('razvi_admin_profile', JSON.stringify(remoteAdmin));
+          } catch {
+            // ignore
+          }
+        }
+        setUserProfile((prev) => {
+          if (!prev) return prev;
+          const myId = buildStableUserId(prev.phone, prev.id, prev.role);
+          const remoteMatch = remoteUsers.find(
+            (u) => buildStableUserId(u.phone, u.id, u.role) === myId
+          );
+          if (remoteMatch && (!prev.updatedAt || Date.parse(remoteMatch.updatedAt) > Date.parse(prev.updatedAt))) {
+            try {
+              localStorage.setItem('marhaba_user_profile', JSON.stringify(remoteMatch));
+            } catch {
+              // ignore
+            }
+            return remoteMatch;
+          }
+          return prev;
+        });
       }
 
       if (remotePayments !== null) {
@@ -318,10 +360,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (isAdminOpen || isAdminAuthenticated) {
+      fetchAdminProfileRecord().then((loaded) => {
+        if (loaded) {
+          setAdminProfile(loaded);
+          try {
+            localStorage.setItem('razvi_admin_profile', JSON.stringify(loaded));
+          } catch {
+            // ignore
+          }
+        }
+      });
+    }
     if (isAdminOpen) {
       syncLiveAdminFeeds();
     }
-  }, [isAdminOpen, syncLiveAdminFeeds]);
+  }, [isAdminOpen, isAdminAuthenticated, syncLiveAdminFeeds]);
 
   useEffect(() => {
     const bgSync = () => {
@@ -480,10 +534,11 @@ export default function App() {
   const [profileInitialTab, setProfileInitialTab] = useState<'profile' | 'orders'>('profile');
 
   const handleSaveUserProfile = (profile: UserProfile) => {
-    const stableId = buildStableUserId(profile.phone, userProfile?.id || profile.id);
+    const stableId = buildStableUserId(profile.phone, userProfile?.id || profile.id, profile.role);
     const enrichedProfile: UserProfile = {
       ...profile,
       id: stableId,
+      role: profile.role || 'user',
       createdAt: userProfile?.createdAt || profile.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -495,7 +550,7 @@ export default function App() {
     }
 
     setStoreUsers((prev) => {
-      const idx = prev.findIndex((u) => buildStableUserId(u.phone, u.id) === stableId);
+      const idx = prev.findIndex((u) => buildStableUserId(u.phone, u.id, u.role) === stableId);
       if (idx >= 0) {
         const next = [...prev];
         next[idx] = enrichedProfile;
@@ -512,6 +567,54 @@ export default function App() {
     }
 
     setIsCreateAccountOpen(false);
+  };
+
+  const handleSecretCodeLogin = async (
+    secretCode: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const cfg = getSupabaseConfig();
+    const res = await loginWithSecretCode(secretCode, storeUsers, cfg);
+    if (!res.ok || !res.profile) {
+      return { ok: false, error: res.error };
+    }
+
+    if (res.role === 'admin') {
+      try {
+        localStorage.setItem('marhaba_admin_auth', 'true');
+        sessionStorage.setItem('marhaba_admin_auth', 'true');
+        localStorage.setItem('razvi_admin_profile', JSON.stringify(res.profile));
+      } catch {
+        // ignore storage error
+      }
+      setAdminProfile(res.profile);
+      setIsAdminAuthenticated(true);
+      setIsCreateAccountOpen(false);
+      setIsAdminOpen(true);
+      return { ok: true };
+    }
+
+    // Customer account restoration (exact saved profile & address)
+    const restored = res.profile;
+    setUserProfile(restored);
+    try {
+      localStorage.setItem('marhaba_user_profile', JSON.stringify(restored));
+    } catch (e) {
+      console.error('Failed saving restored user profile', e);
+    }
+    setStoreUsers((prev) => {
+      const stableId = buildStableUserId(restored.phone, restored.id, restored.role);
+      const idx = prev.findIndex((u) => buildStableUserId(u.phone, u.id, u.role) === stableId);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = restored;
+        return next;
+      }
+      return [restored, ...prev];
+    });
+    setIsCreateAccountOpen(false);
+    setAdminToast(`Welcome back, ${restored.fullName}! Aapka profile & address restore ho gaya.`);
+    setTimeout(() => setAdminToast(null), 5000);
+    return { ok: true };
   };
 
   const handleUserLogout = () => {
@@ -1043,8 +1146,52 @@ export default function App() {
     localStorage.setItem('marhaba_categories', JSON.stringify(INITIAL_CATEGORIES));
   };
 
+  const handleUpdateStoreUser = async (updatedUser: UserProfile): Promise<boolean> => {
+    const stableId = buildStableUserId(updatedUser.phone, updatedUser.id, updatedUser.role);
+    const cleanUser: UserProfile = {
+      ...updatedUser,
+      id: stableId,
+      updatedAt: new Date().toISOString()
+    };
+    setStoreUsers((prev) => {
+      const idx = prev.findIndex((u) => buildStableUserId(u.phone, u.id, u.role) === stableId);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = cleanUser;
+        return next;
+      }
+      return [cleanUser, ...prev];
+    });
+    if (userProfile && buildStableUserId(userProfile.phone, userProfile.id, userProfile.role) === stableId) {
+      setUserProfile(cleanUser);
+      try {
+        localStorage.setItem('marhaba_user_profile', JSON.stringify(cleanUser));
+      } catch {
+        // ignore
+      }
+    }
+    const cfg = getSupabaseConfig();
+    if (cfg.url && cfg.anonKey) {
+      return await saveUserToSupabase(cleanUser, cfg);
+    }
+    return false;
+  };
+
+  const handleUpdateAdminProfile = async (updatedAdmin: UserProfile): Promise<boolean> => {
+    const cfg = getSupabaseConfig();
+    const res = await saveAdminProfileRecord(updatedAdmin, cfg);
+    const finalProfile = res.profile || updatedAdmin;
+    setAdminProfile(finalProfile);
+    try {
+      localStorage.setItem('razvi_admin_profile', JSON.stringify(finalProfile));
+    } catch {
+      // ignore
+    }
+    return Boolean(res.syncedToSupabase || res.ok);
+  };
+
   const handleDeleteStoreUser = async (userId: string): Promise<boolean> => {
-    setStoreUsers((prev) => prev.filter((u) => buildStableUserId(u.phone, u.id) !== userId));
+    setStoreUsers((prev) => prev.filter((u) => buildStableUserId(u.phone, u.id, u.role) !== userId));
     const cfg = getSupabaseConfig();
     if (cfg.url && cfg.anonKey) {
       return await deleteUserFromSupabase(userId, cfg);
@@ -1154,6 +1301,7 @@ export default function App() {
         banners={banners}
         orders={recentOrders}
         users={storeUsers}
+        adminProfile={adminProfile}
         paymentAccounts={paymentAccounts}
         onAddProduct={handleAddProduct}
         onUpdateProduct={handleUpdateProduct}
@@ -1168,7 +1316,9 @@ export default function App() {
         onDeleteOrder={handleDeleteOrder}
         onSaveProductReview={handleSaveProductReview}
         onDeleteProductReview={handleDeleteProductReview}
+        onUpdateUser={handleUpdateStoreUser}
         onDeleteUser={handleDeleteStoreUser}
+        onUpdateAdminProfile={handleUpdateAdminProfile}
         onSavePaymentAccount={handleSavePaymentAccount}
         onSetActivePaymentAccount={handleSetActivePaymentAccount}
         onDeletePaymentAccount={handleDeletePaymentAccount}
@@ -1211,7 +1361,7 @@ export default function App() {
             setIsProfileOpen(true);
           }
         }}
-        userName={isAdminAuthenticated ? (userProfile?.fullName || 'Rahbar') : userProfile?.fullName}
+        userName={isAdminAuthenticated ? (adminProfile?.fullName || userProfile?.fullName || 'Rahbar') : userProfile?.fullName}
         paymentPhone={activePaymentAccount?.phone}
       />
 
@@ -1355,7 +1505,7 @@ export default function App() {
         onToggleWishlist={handleToggleWishlist}
         onAddToCart={handleAddToCart}
         onBuyNow={handleBuyNow}
-        userProfile={userProfile}
+        userProfile={userProfile || (isAdminAuthenticated ? adminProfile : null)}
         onSubmitReview={handleSaveProductReview}
       />
 
@@ -1381,7 +1531,7 @@ export default function App() {
         couponDiscount={appliedCouponInfo.discount}
         appliedCode={appliedCouponInfo.code}
         onOrderPlaced={handleOrderPlaced}
-        userProfile={userProfile}
+        userProfile={userProfile || (isAdminAuthenticated ? adminProfile : null)}
         activePaymentAccount={activePaymentAccount}
       />
 
@@ -1407,16 +1557,19 @@ export default function App() {
         initialTab={profileInitialTab}
         onClose={() => setIsProfileOpen(false)}
         userProfile={userProfile}
+        localUsers={storeUsers}
         onUpdateProfile={handleSaveUserProfile}
         onOpenCreateAccount={() => setIsCreateAccountOpen(true)}
         onLogout={handleUserLogout}
         orders={myOrders}
       />
 
-      {/* First-Launch Create Account Modal */}
+      {/* First-Launch Create Account & 6-Digit Secret Code Login Modal */}
       <CreateAccountModal
         isOpen={isCreateAccountOpen && !isAdminLoginOpen && !isAdminAuthenticated}
+        localUsers={storeUsers}
         onSaveAccount={handleSaveUserProfile}
+        onSecretCodeLogin={handleSecretCodeLogin}
         onTriggerAdminLogin={handleTriggerAdminLogin}
       />
 
@@ -1435,17 +1588,23 @@ export default function App() {
       <AdminLoginModal
         isOpen={isAdminLoginOpen}
         onClose={() => setIsAdminLoginOpen(false)}
-        onLoginSuccess={() => {
+        onLoginSuccess={(restoredAdminProfile) => {
           try {
             localStorage.setItem('marhaba_admin_auth', 'true');
             sessionStorage.setItem('marhaba_admin_auth', 'true');
+            if (restoredAdminProfile) {
+              localStorage.setItem('razvi_admin_profile', JSON.stringify(restoredAdminProfile));
+            }
           } catch {
             // ignore storage error
           }
+          if (restoredAdminProfile) {
+            setAdminProfile(restoredAdminProfile);
+          }
           setIsAdminAuthenticated(true);
           setIsAdminLoginOpen(false);
-          setIsAdminOpen(false);
-          setAdminToast('Admin logged in! Upar Profile par click karke Admin Panel kholein.');
+          setIsAdminOpen(true);
+          setAdminToast('Admin logged in! Admin Panel & Profile restore ho gaya.');
           setTimeout(() => setAdminToast(null), 5000);
         }}
       />

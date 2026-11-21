@@ -10,7 +10,14 @@ import { Product, Banner, Order, Category, SupabaseConfig, ProductColorVariant, 
 import { ImageColorPicker } from './ImageColorPicker';
 import { encodeMultiColorSingleLink, getSupabaseEncodedPayloadKb } from '../lib/multiColorCodec';
 import { createCompactReviewId, getCompactReviewKb } from '../lib/reviewCodec';
-import { buildStableUserId, getCompactUserKb } from '../lib/userCodec';
+import {
+  ADMIN_OWNER_USER_ID,
+  DEFAULT_ADMIN_SECRET_CODE,
+  buildStableUserId,
+  getCompactUserKb,
+  normalizeSecretCode,
+  isValidSecretCode
+} from '../lib/userCodec';
 import { buildPaymentAccountId, getPaymentRowKb } from '../lib/paymentCodec';
 import { 
   SUPABASE_SQL_SCHEMA, 
@@ -34,7 +41,8 @@ import {
   deleteBannerFromSupabase,
   saveOrderToSupabase,
   deleteOrderFromSupabase,
-  batchSyncAllToSupabase
+  batchSyncAllToSupabase,
+  checkSecretCodeDuplicate
 } from '../lib/supabase';
 import { compressImageFile, getImageSizeKb } from '../lib/imageCompressor';
 
@@ -44,6 +52,7 @@ interface AdminPanelProps {
   banners: Banner[];
   orders: Order[];
   users: UserProfile[];
+  adminProfile?: UserProfile | null;
   paymentAccounts: PaymentAccount[];
   onAddProduct: (product: Product) => void;
   onUpdateProduct: (product: Product) => void;
@@ -58,7 +67,9 @@ interface AdminPanelProps {
   onDeleteOrder: (orderId: string) => void;
   onSaveProductReview: (productId: string, review: ProductReview) => Promise<boolean>;
   onDeleteProductReview: (productId: string, reviewId: string) => Promise<boolean>;
+  onUpdateUser?: (user: UserProfile) => Promise<boolean>;
   onDeleteUser?: (userId: string) => Promise<boolean>;
+  onUpdateAdminProfile?: (profile: UserProfile) => Promise<boolean>;
   onSavePaymentAccount: (account: PaymentAccount) => Promise<boolean>;
   onSetActivePaymentAccount: (accountId: string) => Promise<boolean>;
   onDeletePaymentAccount: (accountId: string) => Promise<boolean>;
@@ -74,6 +85,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   banners,
   orders,
   users,
+  adminProfile,
   paymentAccounts,
   onAddProduct,
   onUpdateProduct,
@@ -88,7 +100,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onDeleteOrder,
   onSaveProductReview,
   onDeleteProductReview,
+  onUpdateUser,
   onDeleteUser,
+  onUpdateAdminProfile,
   onSavePaymentAccount,
   onSetActivePaymentAccount,
   onDeletePaymentAccount,
@@ -247,6 +261,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showUsersSqlBox, setShowUsersSqlBox] = useState(false);
   const [copiedUsersSql, setCopiedUsersSql] = useState(false);
+  const [showSelectedUserSecret, setShowSelectedUserSecret] = useState(false);
+  const [editingUserSecretVal, setEditingUserSecretVal] = useState<string | null>(null);
+  const [savingUserSecret, setSavingUserSecret] = useState(false);
+
+  // Admin Secret Code & Admin Profile Editor State
+  const [isEditingAdminProfile, setIsEditingAdminProfile] = useState(false);
+  const [showAdminSecret, setShowAdminSecret] = useState(false);
+  const [savingAdminProfile, setSavingAdminProfile] = useState(false);
+  const [adminForm, setAdminForm] = useState(() => ({
+    fullName: adminProfile?.fullName || 'Rahbar Official (Admin)',
+    phone: adminProfile?.phone || '9334808340',
+    age: adminProfile?.age || '28',
+    secretCode: normalizeSecretCode(adminProfile?.secretCode || DEFAULT_ADMIN_SECRET_CODE),
+    buildingOrVillage: adminProfile?.buildingOrVillage || 'RAZVI SHOP HQ',
+    fullAddress: adminProfile?.fullAddress || 'Kishanganj Main Market',
+    landmark: adminProfile?.landmark || '',
+    city: adminProfile?.city || 'Kishanganj',
+    state: adminProfile?.state || 'Bihar',
+    pincode: adminProfile?.pincode || '855108'
+  }));
 
   // Admin Payment QR Scanner, Phone & Bank State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -1136,10 +1170,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <span className="hidden lg:inline-flex items-center gap-1.5 bg-black/20 text-[#FECE57] text-[11px] px-3 py-1 rounded-full font-mono font-bold border border-white/10">
-              <User className="w-3.5 h-3.5 text-[#FECE57]" />
-              <span>Owner: RAHBAR786</span>
-            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('users');
+                setIsEditingAdminProfile(true);
+                if (adminProfile) {
+                  setAdminForm({
+                    fullName: adminProfile.fullName || 'Rahbar Official (Admin)',
+                    phone: adminProfile.phone || '9334808340',
+                    age: adminProfile.age || '28',
+                    secretCode: normalizeSecretCode(adminProfile.secretCode || DEFAULT_ADMIN_SECRET_CODE),
+                    buildingOrVillage: adminProfile.buildingOrVillage || 'RAZVI SHOP HQ',
+                    fullAddress: adminProfile.fullAddress || 'Kishanganj Main Market',
+                    landmark: adminProfile.landmark || '',
+                    city: adminProfile.city || 'Kishanganj',
+                    state: adminProfile.state || 'Bihar',
+                    pincode: adminProfile.pincode || '855108'
+                  });
+                }
+              }}
+              className="flex items-center gap-1 text-[10px] sm:text-xs bg-black/25 hover:bg-black/40 text-[#FECE57] px-2 py-1 sm:px-3 sm:py-1.5 rounded font-bold transition-colors border border-[#FECE57]/35 shrink-0 cursor-pointer"
+              title="View or change Admin 6-digit Secret Code & Profile"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-[#FECE57]" />
+              <span className="hidden sm:inline">Admin Secret</span>
+            </button>
 
             <button
               onClick={() => setActiveTab('supabase')}
@@ -1310,7 +1366,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               }`}
             >
               <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#038D63]" />
-              <span>Users ({users.length})</span>
+              <span>
+                Users ({users.filter((u) => u.role !== 'admin' && u.id !== ADMIN_OWNER_USER_ID).length})
+              </span>
             </button>
 
             <button
@@ -2815,12 +2873,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* TAB 7: REAL-TIME USERS DIRECTORY & ADDRESS INSPECTOR         */}
         {/* ============================================================ */}
         {activeTab === 'users' && (() => {
+          const customerUsers = users.filter(
+            (u) => u.role !== 'admin' && u.id !== ADMIN_OWNER_USER_ID
+          );
           const q = searchUserQuery.trim().toLowerCase();
-          const filteredUsers = users.filter((u) => {
+          const filteredUsers = customerUsers.filter((u) => {
             if (!q) return true;
             return (
               (u.fullName || '').toLowerCase().includes(q) ||
               (u.phone || '').toLowerCase().includes(q) ||
+              (u.secretCode || '').toLowerCase().includes(q) ||
               (u.city || '').toLowerCase().includes(q) ||
               (u.state || '').toLowerCase().includes(q) ||
               (u.pincode || '').toLowerCase().includes(q) ||
@@ -2829,16 +2891,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             );
           });
 
-          const totalUsersKb = users.reduce((sum, u) => sum + getCompactUserKb(u), 0);
+          const totalUsersKb = customerUsers.reduce((sum, u) => sum + getCompactUserKb(u), 0);
           const resolvedSelectedId =
-            selectedUserId && filteredUsers.some((u) => buildStableUserId(u.phone, u.id) === selectedUserId)
+            selectedUserId && filteredUsers.some((u) => buildStableUserId(u.phone, u.id, u.role) === selectedUserId)
               ? selectedUserId
               : filteredUsers[0]
-              ? buildStableUserId(filteredUsers[0].phone, filteredUsers[0].id)
+              ? buildStableUserId(filteredUsers[0].phone, filteredUsers[0].id, filteredUsers[0].role)
               : null;
 
           const activeUser =
-            filteredUsers.find((u) => buildStableUserId(u.phone, u.id) === resolvedSelectedId) || null;
+            filteredUsers.find((u) => buildStableUserId(u.phone, u.id, u.role) === resolvedSelectedId) || null;
 
           const activeUserOrders = activeUser
             ? orders.filter(
@@ -2848,8 +2910,290 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               )
             : [];
 
+          const currentAdminCode = normalizeSecretCode(
+            adminProfile?.secretCode || adminForm.secretCode || DEFAULT_ADMIN_SECRET_CODE
+          );
+
+          const handleSaveAdminSettings = async (e: React.FormEvent) => {
+            e.preventDefault();
+            if (!onUpdateAdminProfile || savingAdminProfile) return;
+            const cleanCode = normalizeSecretCode(adminForm.secretCode);
+            if (!isValidSecretCode(cleanCode)) {
+              showToast('Sirf 6 digit ka Admin Secret Code enter karein.', 'error');
+              return;
+            }
+            const taken = await checkSecretCodeDuplicate(cleanCode, ADMIN_OWNER_USER_ID, customerUsers);
+            if (taken) {
+              showToast('Ye 6-digit code kisi customer ke paas hai. Doosra 6-digit code daalein.', 'error');
+              return;
+            }
+
+            setSavingAdminProfile(true);
+            try {
+              const now = new Date().toISOString();
+              const ok = await onUpdateAdminProfile({
+                id: ADMIN_OWNER_USER_ID,
+                role: 'admin',
+                fullName: adminForm.fullName.trim() || 'Rahbar Official (Admin)',
+                phone: adminForm.phone.replace(/\D/g, '') || '9334808340',
+                age: adminForm.age.trim() || '28',
+                secretCode: cleanCode,
+                buildingOrVillage: adminForm.buildingOrVillage.trim() || 'RAZVI SHOP HQ',
+                fullAddress: adminForm.fullAddress.trim() || 'Kishanganj Main Market',
+                landmark: adminForm.landmark.trim() || undefined,
+                city: adminForm.city.trim() || 'Kishanganj',
+                state: adminForm.state.trim() || 'Bihar',
+                pincode: adminForm.pincode.replace(/\D/g, '').slice(0, 6) || '855108',
+                createdAt: adminProfile?.createdAt || now,
+                updatedAt: now
+              });
+              setIsEditingAdminProfile(false);
+              showToast(
+                ok
+                  ? 'Admin 6-Digit Secret Code & Profile saved to Supabase!'
+                  : 'Admin Secret Code saved locally!',
+                ok ? 'success' : 'info'
+              );
+            } finally {
+              setSavingAdminProfile(false);
+            }
+          };
+
+          const handleSaveSelectedUserSecret = async (e: React.FormEvent) => {
+            e.preventDefault();
+            if (!activeUser || !onUpdateUser || editingUserSecretVal === null || savingUserSecret) return;
+            const cleanCode = normalizeSecretCode(editingUserSecretVal);
+            if (!isValidSecretCode(cleanCode)) {
+              showToast('Sirf 6 digit ka Secret Code enter karein.', 'error');
+              return;
+            }
+            const targetUid = buildStableUserId(activeUser.phone, activeUser.id, activeUser.role);
+            const taken = await checkSecretCodeDuplicate(cleanCode, targetUid, [
+              ...customerUsers,
+              ...(adminProfile ? [adminProfile] : [])
+            ]);
+            if (taken) {
+              showToast('Ye 6-digit code kisi aur user/admin me already set hai.', 'error');
+              return;
+            }
+
+            setSavingUserSecret(true);
+            try {
+              const ok = await onUpdateUser({
+                ...activeUser,
+                id: targetUid,
+                secretCode: cleanCode,
+                updatedAt: new Date().toISOString()
+              });
+              setEditingUserSecretVal(null);
+              showToast(
+                ok
+                  ? `${activeUser.fullName} ka 6-digit Secret Code Supabase me update ho gaya!`
+                  : 'Secret code updated locally.',
+                ok ? 'success' : 'info'
+              );
+            } finally {
+              setSavingUserSecret(false);
+            }
+          };
+
           return (
             <div className="space-y-4">
+              {/* Admin Owner 6-Digit Secret Code & Profile Settings Card */}
+              <div className="bg-gradient-to-r from-[#4B0013] via-[#80182E] to-[#9F2089] text-white p-4 rounded-xl shadow-sm border border-[#9F2089]/30 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
+                      <KeyRound className="w-5 h-5 text-[#FECE57]" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-sm sm:text-base font-bold">
+                          Admin 6-Digit Secret Code &amp; Profile
+                        </h3>
+                        <span className="bg-[#FECE57] text-[#4B0013] text-[10px] font-black px-2 py-0.5 rounded uppercase">
+                          Owner Login PIN
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-white/85">
+                        Logout karne ke baad yahi 6-digit code enter karke sidha Admin Panel &amp; apna saved profile wapas kholein · Supabase Synced
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-black/25 border border-white/20 px-3 py-1.5 rounded-lg">
+                      <span className="text-[10px] text-white/75 uppercase font-bold">Admin Code:</span>
+                      <span className="font-mono font-black text-sm tracking-[0.2em] text-[#FECE57]">
+                        {showAdminSecret ? currentAdminCode : '••••••'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminSecret((prev) => !prev)}
+                        className="p-1 text-white/80 hover:text-white cursor-pointer"
+                        title={showAdminSecret ? 'Hide Admin Code' : 'Show Admin Code'}
+                      >
+                        {showAdminSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isEditingAdminProfile && adminProfile) {
+                          setAdminForm({
+                            fullName: adminProfile.fullName || 'Rahbar Official (Admin)',
+                            phone: adminProfile.phone || '9334808340',
+                            age: adminProfile.age || '28',
+                            secretCode: normalizeSecretCode(adminProfile.secretCode || DEFAULT_ADMIN_SECRET_CODE),
+                            buildingOrVillage: adminProfile.buildingOrVillage || 'RAZVI SHOP HQ',
+                            fullAddress: adminProfile.fullAddress || 'Kishanganj Main Market',
+                            landmark: adminProfile.landmark || '',
+                            city: adminProfile.city || 'Kishanganj',
+                            state: adminProfile.state || 'Bihar',
+                            pincode: adminProfile.pincode || '855108'
+                          });
+                        }
+                        setIsEditingAdminProfile((prev) => !prev);
+                      }}
+                      className="px-3 py-1.5 bg-[#FECE57] hover:bg-amber-300 text-[#4B0013] font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      <span>{isEditingAdminProfile ? 'Close Editor' : 'Change Secret Code / Address'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {isEditingAdminProfile && (
+                  <form
+                    onSubmit={handleSaveAdminSettings}
+                    className="bg-white text-[#222222] rounded-xl p-4 space-y-3 text-xs animate-fadeIn"
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="p-2.5 bg-[#FAF8F5] border border-[#9F2089]/30 rounded-lg">
+                        <label className="flex items-center justify-between font-bold text-[#9F2089] mb-1">
+                          <span>Admin 6-Digit Secret Code *</span>
+                          <span className="font-mono text-[10px]">{adminForm.secretCode.length}/6</span>
+                        </label>
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          pattern="\d{6}"
+                          maxLength={6}
+                          required
+                          value={adminForm.secretCode}
+                          onChange={(e) =>
+                            setAdminForm({ ...adminForm, secretCode: normalizeSecretCode(e.target.value) })
+                          }
+                          placeholder="6-digit code"
+                          className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded font-mono font-black tracking-[0.25em] focus:border-[#9F2089] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold mb-1">Admin Full Name *</label>
+                        <input
+                          type="text"
+                          required
+                          value={adminForm.fullName}
+                          onChange={(e) => setAdminForm({ ...adminForm, fullName: e.target.value })}
+                          className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold mb-1">Admin Phone *</label>
+                        <input
+                          type="tel"
+                          maxLength={10}
+                          required
+                          value={adminForm.phone}
+                          onChange={(e) =>
+                            setAdminForm({ ...adminForm, phone: e.target.value.replace(/\D/g, '') })
+                          }
+                          className="w-full px-3 py-2 border border-[#CCCCCC] rounded font-mono focus:border-[#9F2089] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold mb-1">Shop / Building Name</label>
+                        <input
+                          type="text"
+                          value={adminForm.buildingOrVillage}
+                          onChange={(e) =>
+                            setAdminForm({ ...adminForm, buildingOrVillage: e.target.value })
+                          }
+                          className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block font-bold mb-1">Full Address</label>
+                        <input
+                          type="text"
+                          value={adminForm.fullAddress}
+                          onChange={(e) => setAdminForm({ ...adminForm, fullAddress: e.target.value })}
+                          className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold mb-1">City</label>
+                        <input
+                          type="text"
+                          value={adminForm.city}
+                          onChange={(e) => setAdminForm({ ...adminForm, city: e.target.value })}
+                          className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold mb-1">State</label>
+                        <input
+                          type="text"
+                          value={adminForm.state}
+                          onChange={(e) => setAdminForm({ ...adminForm, state: e.target.value })}
+                          className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold mb-1">Pincode</label>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={adminForm.pincode}
+                          onChange={(e) =>
+                            setAdminForm({ ...adminForm, pincode: e.target.value.replace(/\D/g, '') })
+                          }
+                          className="w-full px-3 py-2 border border-[#CCCCCC] rounded font-mono focus:border-[#9F2089] focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingAdminProfile(false)}
+                        className="px-3.5 py-2 border border-[#CCCCCC] rounded-lg font-semibold text-[#555555] hover:bg-slate-50 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingAdminProfile || adminForm.secretCode.length !== 6}
+                        className="px-4 py-2 bg-[#038D63] hover:bg-[#027350] disabled:opacity-50 text-white font-bold rounded-lg flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>
+                          {savingAdminProfile ? 'Saving to Supabase...' : 'Save Admin Secret & Profile'}
+                        </span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+
               {/* Top Header & SQL Toggle */}
               <div className="bg-white p-4 rounded-lg border border-[#E8E8E8] shadow-xs space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -2860,7 +3204,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div>
                       <div className="flex items-center gap-2">
                         <h2 className="text-sm sm:text-base font-bold text-[#222222]">
-                          Registered Users ({users.length})
+                          Registered Users ({customerUsers.length})
                         </h2>
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-700">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -2868,7 +3212,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </span>
                       </div>
                       <p className="text-[11px] text-[#666666]">
-                        Har user ke account create ya address update karte hi turant Supabase se update hota hai · Total Storage: <strong className="text-[#038D63]">{totalUsersKb.toFixed(2)} KB</strong>
+                        Har user ke account create, secret code change ya address update karte hi turant Supabase se update hota hai · Total Storage: <strong className="text-[#038D63]">{totalUsersKb.toFixed(2)} KB</strong>
                       </p>
                     </div>
                   </div>
@@ -2905,7 +3249,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     type="text"
                     value={searchUserQuery}
                     onChange={(e) => setSearchUserQuery(e.target.value)}
-                    placeholder="Search user by name, phone, village, city, state or pincode..."
+                    placeholder="Search user by name, phone, 6-digit secret code, village, city or pincode..."
                     className="flex-1 px-3 py-2 text-xs border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:outline-none"
                   />
                 </div>
@@ -2914,7 +3258,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="pt-2 border-t border-[#E8E8E8] space-y-2 animate-fadeIn">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-[11px] text-[#555555]">
-                        Supabase SQL Editor me ye SQL run karein taaki <code>public.store_users</code> real-time table ban jaye (ultra-low KB compact storage):
+                        Supabase SQL Editor me ye SQL run karein taaki <code>public.store_users</code> me <code>secret_code</code> column aur real-time index save ho jaye:
                       </p>
                       <button
                         type="button"
@@ -2943,7 +3287,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="lg:col-span-7 bg-white rounded-lg border border-[#E8E8E8] shadow-xs overflow-hidden">
                   <div className="px-4 py-3 bg-[#FAF8F5] border-b border-[#E8E8E8] flex items-center justify-between">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-[#555555]">
-                      All Users ({filteredUsers.length}) · Click Any Row for Full Address
+                      All Users ({filteredUsers.length}) · Click Any Row for Full Address &amp; Secret Code
                     </h3>
                   </div>
 
@@ -2951,11 +3295,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="p-8 text-center text-xs text-[#777777] space-y-2">
                       <Users className="w-8 h-8 text-[#CCCCCC] mx-auto" />
                       <p className="font-semibold text-[#444444]">
-                        {users.length === 0
+                        {customerUsers.length === 0
                           ? 'Abhi tak koi user registered nahi mila.'
                           : 'Search se matching koi user nahi mila.'}
                       </p>
-                      {users.length === 0 && (
+                      {customerUsers.length === 0 && (
                         <p className="text-[11px]">
                           Naya user account banate hi ya profile update karte hi yahan real-time me dikhne lagega (upar <strong>Supabase Users SQL</strong> run karna na bhoolein).
                         </p>
@@ -2968,7 +3312,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <tr className="bg-[#FAF8F5] border-b border-[#E8E8E8] text-[10px] uppercase tracking-wider text-[#666666]">
                             <th className="py-2.5 px-3 font-bold">Name</th>
                             <th className="py-2.5 px-2.5 font-bold">Phone</th>
-                            <th className="py-2.5 px-2 font-bold hidden sm:table-cell">Age</th>
+                            <th className="py-2.5 px-2.5 font-bold">Secret Code</th>
                             <th className="py-2.5 px-2.5 font-bold">City / State</th>
                             <th className="py-2.5 px-2.5 font-bold hidden md:table-cell">Pincode</th>
                             <th className="py-2.5 px-2.5 font-bold text-right">KB</th>
@@ -2976,13 +3320,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </thead>
                         <tbody className="divide-y divide-[#F0F0F2]">
                           {filteredUsers.map((u) => {
-                            const uid = buildStableUserId(u.phone, u.id);
+                            const uid = buildStableUserId(u.phone, u.id, u.role);
                             const isSelected = uid === resolvedSelectedId;
                             const userKb = getCompactUserKb(u).toFixed(2);
+                            const cleanCode = normalizeSecretCode(u.secretCode || '');
                             return (
                               <tr
                                 key={uid}
-                                onClick={() => setSelectedUserId(uid)}
+                                onClick={() => {
+                                  setSelectedUserId(uid);
+                                  setEditingUserSecretVal(null);
+                                }}
                                 className={`cursor-pointer transition-colors ${
                                   isSelected
                                     ? 'bg-[#FDE5F4]/65 border-l-4 border-l-[#9F2089]'
@@ -3000,8 +3348,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <td className="py-2.5 px-2.5 font-mono text-[11px] text-[#333333] whitespace-nowrap">
                                   {u.phone}
                                 </td>
-                                <td className="py-2.5 px-2 hidden sm:table-cell text-[#555555]">
-                                  {u.age || '-'} yrs
+                                <td className="py-2.5 px-2.5 whitespace-nowrap">
+                                  {cleanCode ? (
+                                    <span className="inline-flex items-center gap-1 font-mono font-bold text-[11px] text-[#9F2089] bg-[#FDE5F4]/70 border border-[#9F2089]/25 px-1.5 py-0.5 rounded">
+                                      <KeyRound className="w-2.5 h-2.5" />
+                                      <span>{cleanCode}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-[#999999] italic">Not Set</span>
+                                  )}
                                 </td>
                                 <td className="py-2.5 px-2.5">
                                   <div className="font-semibold text-[#333333] truncate max-w-[120px]">
@@ -3028,11 +3383,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   )}
                 </div>
 
-                {/* Selected User Full Address & Profile Details Panel */}
+                {/* Selected User Full Address, Secret Code & Profile Details Panel */}
                 <div className="lg:col-span-5 bg-white rounded-lg border border-[#E8E8E8] shadow-xs overflow-hidden">
                   {!activeUser ? (
                     <div className="p-8 text-center text-xs text-[#777777]">
-                      Kisi bhi user par click karein unka poora address, phone, age aur order history dekhne ke liye.
+                      Kisi bhi user par click karein unka poora address, 6-digit secret code, phone, age aur order history dekhne ke liye.
                     </div>
                   ) : (
                     <div className="p-4 space-y-3.5 text-xs">
@@ -3063,7 +3418,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              const targetId = buildStableUserId(activeUser.phone, activeUser.id);
+                              const targetId = buildStableUserId(activeUser.phone, activeUser.id, activeUser.role);
                               setPendingConfirm({
                                 title: 'Remove User Record?',
                                 message: `${activeUser.fullName} (${activeUser.phone}) ka record Admin Users list aur Supabase se delete ho jayega.`,
@@ -3082,6 +3437,86 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
+                        )}
+                      </div>
+
+                      {/* 6-Digit Secret Code Management for Selected User */}
+                      <div className="p-3 bg-[#FDE5F4]/35 border border-[#9F2089]/30 rounded-lg space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <KeyRound className="w-4 h-4 text-[#9F2089]" />
+                            <div>
+                              <div className="text-[10px] font-bold uppercase text-[#9F2089]">
+                                6-Digit Secret Code
+                              </div>
+                              <div className="font-mono font-black text-sm tracking-[0.25em] text-[#222222]">
+                                {activeUser.secretCode
+                                  ? showSelectedUserSecret
+                                    ? activeUser.secretCode
+                                    : '••••••'
+                                  : 'Not Set'}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {activeUser.secretCode && (
+                              <button
+                                type="button"
+                                onClick={() => setShowSelectedUserSecret((prev) => !prev)}
+                                className="p-1.5 bg-white rounded border border-[#E2D8E0] text-[#555555] hover:text-[#222222] cursor-pointer"
+                                title={showSelectedUserSecret ? 'Hide Code' : 'Show Code'}
+                              >
+                                {showSelectedUserSecret ? (
+                                  <EyeOff className="w-3.5 h-3.5" />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
+                            {onUpdateUser && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (editingUserSecretVal !== null) {
+                                    setEditingUserSecretVal(null);
+                                  } else {
+                                    setEditingUserSecretVal(normalizeSecretCode(activeUser.secretCode || ''));
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-[#9F2089] hover:bg-[#80182E] text-white font-bold text-[10px] rounded cursor-pointer"
+                              >
+                                {editingUserSecretVal !== null ? 'Cancel' : 'Change Code'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {editingUserSecretVal !== null && (
+                          <form onSubmit={handleSaveSelectedUserSecret} className="pt-2 border-t border-[#9F2089]/20 space-y-1.5">
+                            <div className="flex gap-2">
+                              <input
+                                type="tel"
+                                inputMode="numeric"
+                                pattern="\d{6}"
+                                maxLength={6}
+                                value={editingUserSecretVal}
+                                onChange={(e) => setEditingUserSecretVal(normalizeSecretCode(e.target.value))}
+                                placeholder="6-digit code"
+                                className="flex-1 px-2.5 py-1.5 bg-white border border-[#CCCCCC] rounded font-mono font-bold tracking-[0.25em] focus:border-[#9F2089] focus:outline-none"
+                              />
+                              <button
+                                type="submit"
+                                disabled={savingUserSecret || editingUserSecretVal.length !== 6}
+                                className="px-3 py-1.5 bg-[#038D63] hover:bg-[#027350] disabled:opacity-50 text-white font-bold rounded text-[11px] cursor-pointer"
+                              >
+                                {savingUserSecret ? 'Saving...' : 'Save Code'}
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-[#666666]">
+                              Sirf 6 digits allow · Save karte hi Supabase me update hoga.
+                            </p>
+                          </form>
                         )}
                       </div>
 

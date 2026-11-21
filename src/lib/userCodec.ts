@@ -128,10 +128,28 @@ function detokenizeAddr(encoded: string): string {
   return unescapePipe(restored);
 }
 
+export const ADMIN_OWNER_USER_ID = 'admin_razvi_owner';
+export const DEFAULT_ADMIN_SECRET_CODE = '786786';
+
+/**
+ * Normalizes any input to strictly digits (max 6 digits).
+ */
+export function normalizeSecretCode(raw: string): string {
+  return String(raw || '').replace(/\D/g, '').slice(0, 6);
+}
+
+/**
+ * Checks that a secret code is strictly 6 numeric digits.
+ */
+export function isValidSecretCode(code?: string): boolean {
+  return /^\d{6}$/.test(String(code || '').trim());
+}
+
 /**
  * Generates deterministic compact user ID based on phone if not already assigned.
  */
-export function buildStableUserId(phone: string, existingId?: string): string {
+export function buildStableUserId(phone: string, existingId?: string, role?: 'user' | 'admin'): string {
+  if (role === 'admin' || existingId === ADMIN_OWNER_USER_ID) return ADMIN_OWNER_USER_ID;
   if (existingId && existingId.trim()) return existingId.trim();
   const digits = phone.replace(/\D/g, '');
   if (digits.length >= 6) {
@@ -141,8 +159,8 @@ export function buildStableUserId(phone: string, existingId?: string): string {
 }
 
 /**
- * Packs all address fields into a single ultra-compact string (typically 0.04-0.08 KB).
- * Format: u1|<buildingOrVillage>|<fullAddress>|<landmark>|<city>|<state>|<pincode>
+ * Packs all address fields + 6-digit secretCode into a single ultra-compact string (~0.04-0.09 KB).
+ * Format: u1|<buildingOrVillage>|<fullAddress>|<landmark>|<city>|<state>|<pincode>|<secretCode>|<role>
  */
 export function encodeCompactUserAddress(u: UserProfile): string {
   const bldg = tokenizeAddr(u.buildingOrVillage || '');
@@ -151,7 +169,13 @@ export function encodeCompactUserAddress(u: UserProfile): string {
   const city = tokenizeAddr(u.city || '');
   const state = tokenizeAddr(u.state || '');
   const pin = escapePipe((u.pincode || '').trim());
-  return `u1|${bldg}|${addr}|${lm}|${city}|${state}|${pin}`;
+  const code = normalizeSecretCode(u.secretCode || '');
+  const roleTag = u.role === 'admin' || u.id === ADMIN_OWNER_USER_ID ? 'admin' : '';
+  return roleTag
+    ? `u1|${bldg}|${addr}|${lm}|${city}|${state}|${pin}|${code}|${roleTag}`
+    : code
+    ? `u1|${bldg}|${addr}|${lm}|${city}|${state}|${pin}|${code}`
+    : `u1|${bldg}|${addr}|${lm}|${city}|${state}|${pin}`;
 }
 
 export async function encodeCompactUserAddressAsync(u: UserProfile): Promise<string> {
@@ -166,7 +190,7 @@ export async function encodeCompactUserAddressAsync(u: UserProfile): Promise<str
 
 export function decodeCompactUserAddressSync(
   packed: string
-): Pick<UserProfile, 'buildingOrVillage' | 'fullAddress' | 'landmark' | 'city' | 'state' | 'pincode'> {
+): Pick<UserProfile, 'buildingOrVillage' | 'fullAddress' | 'landmark' | 'city' | 'state' | 'pincode' | 'secretCode' | 'role'> {
   if (!packed || typeof packed !== 'string' || !packed.startsWith('u1|')) {
     return {
       buildingOrVillage: '',
@@ -174,24 +198,29 @@ export function decodeCompactUserAddressSync(
       landmark: undefined,
       city: '',
       state: '',
-      pincode: ''
+      pincode: '',
+      secretCode: '',
+      role: 'user'
     };
   }
-  const [, bldg, addr, lm, city, state, pin] = packed.split('|');
+  const [, bldg, addr, lm, city, state, pin, secretCode, role] = packed.split('|');
   const cleanLm = lm ? detokenizeAddr(lm) : '';
+  const cleanSecret = normalizeSecretCode(secretCode || '');
   return {
     buildingOrVillage: detokenizeAddr(bldg || ''),
     fullAddress: detokenizeAddr(addr || ''),
     landmark: cleanLm || undefined,
     city: detokenizeAddr(city || ''),
     state: detokenizeAddr(state || ''),
-    pincode: unescapePipe(pin || '')
+    pincode: unescapePipe(pin || ''),
+    secretCode: cleanSecret || undefined,
+    role: role === 'admin' ? 'admin' : 'user'
   };
 }
 
 export async function decodeCompactUserAddressAsync(
   packed: string
-): Promise<Pick<UserProfile, 'buildingOrVillage' | 'fullAddress' | 'landmark' | 'city' | 'state' | 'pincode'>> {
+): Promise<Pick<UserProfile, 'buildingOrVillage' | 'fullAddress' | 'landmark' | 'city' | 'state' | 'pincode' | 'secretCode' | 'role'>> {
   if (typeof packed === 'string' && packed.startsWith('uz1:')) {
     try {
       const bytes = fromBase64Url(packed.slice(4));
@@ -207,11 +236,11 @@ export async function decodeCompactUserAddressAsync(
 }
 
 /**
- * Exact KB footprint of the compacted address payload stored in Supabase.
+ * Exact KB footprint of the compacted address & secretCode payload stored in Supabase.
  */
 export function getCompactUserKb(u: UserProfile): number {
   const packed = encodeCompactUserAddress(u);
-  const fullCompact = `${u.id || buildStableUserId(u.phone)}|${u.fullName}|${u.phone}|${u.age}|${packed}`;
+  const fullCompact = `${u.id || buildStableUserId(u.phone, u.id, u.role)}|${u.fullName}|${u.phone}|${u.age}|${u.secretCode || ''}|${packed}`;
   const bytes =
     typeof TextEncoder !== 'undefined'
       ? new TextEncoder().encode(fullCompact).length

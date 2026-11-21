@@ -3,6 +3,7 @@ import express from 'express';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { createServer as createViteServer } from 'vite';
 
 interface StoredSupabaseConfig {
@@ -14,6 +15,8 @@ interface StoredSupabaseConfig {
 const PORT = Number(process.env.PORT) || 3000;
 const DATA_DIR = path.resolve(process.cwd(), '.data');
 const CONFIG_FILE = path.join(DATA_DIR, 'supabase-config.json');
+const ADMIN_PROFILE_FILE = path.join(DATA_DIR, 'admin-account.json');
+const ADMIN_OWNER_ID = 'admin_razvi_owner';
 
 function cleanSupabaseUrl(url: string): string {
   let clean = url.trim().replace(/\/+$/, '');
@@ -236,6 +239,423 @@ async function startServer() {
       users,
       paymentSettings
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 6-DIGIT SECRET CODE AUTH & ADMIN ACCOUNT PERSISTENCE (.data + Supabase)
+  // ---------------------------------------------------------------------------
+  interface StoredAdminProfile {
+    id: string;
+    role: 'admin';
+    fullName: string;
+    phone: string;
+    age: string;
+    buildingOrVillage: string;
+    fullAddress: string;
+    landmark?: string;
+    city: string;
+    state: string;
+    pincode: string;
+    secretCode: string;
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  function escapePipeVal(val: string): string {
+    return String(val || '')
+      .replace(/\\/g, '\\\\')
+      .replace(/\|/g, '\\p')
+      .replace(/\r?\n/g, '\\n');
+  }
+
+  function unescapePipeVal(val: string): string {
+    return String(val || '').replace(/\\(\\|p|n)/g, (_, ch) => {
+      if (ch === 'p') return '|';
+      if (ch === 'n') return '\n';
+      return '\\';
+    });
+  }
+
+  const SERVER_ADDR_TOKENS: Array<[string, string]> = [
+    ['Apartment', '^A'], ['apartment', '^a'], ['Residency', '^R'], ['residency', '^r'],
+    ['Mohalla', '^M'], ['mohalla', '^m'], ['Village', '^V'], ['village', '^v'],
+    ['Colony', '^C'], ['colony', '^c'], ['Nagar', '^N'], ['nagar', '^n'],
+    ['Street', '^S'], ['street', '^s'], ['Station', '^T'], ['station', '^t'],
+    ['Masjid', '^J'], ['masjid', '^j'], ['Market', '^K'], ['market', '^k'],
+    ['District', '^D'], ['district', '^d'], ['Bazaar', '^Z'], ['bazaar', '^z'],
+    ['Chowk', '^W'], ['chowk', '^w'], ['Bihar', '^B'], ['India', '^I'],
+    ['Near', '^E'], ['near', '^e'], ['Ward', '^Q'], ['ward', '^q'],
+    ['Road', '^O'], ['road', '^o'], ['Post', '^P'], ['post', '^p']
+  ];
+  const SERVER_ADDR_MAP: Record<string, string> = Object.fromEntries(
+    SERVER_ADDR_TOKENS.map(([w, t]) => [t, w])
+  );
+
+  function serverTokenize(text: string): string {
+    let out = escapePipeVal((text || '').trim().replace(/\s+/g, ' ')).replace(/\^/g, '^^');
+    for (const [word, tok] of SERVER_ADDR_TOKENS) {
+      out = out.replace(new RegExp(`\\b${word}\\b`, 'g'), tok);
+    }
+    return out;
+  }
+
+  function serverDetokenize(encoded: string): string {
+    const restored = String(encoded || '').replace(/\^(\^|[a-zA-Z])/g, (full, ch) => {
+      if (ch === '^') return '^';
+      const word = SERVER_ADDR_MAP[`^${ch}`];
+      return word !== undefined ? word : full;
+    });
+    return unescapePipeVal(restored);
+  }
+
+  function decodePackedUser(packed: string) {
+    let plain = String(packed || '');
+    if (plain.startsWith('uz1:')) {
+      try {
+        const norm = plain.slice(4).replace(/-/g, '+').replace(/_/g, '/');
+        const pad = norm.length % 4 === 0 ? '' : '='.repeat(4 - (norm.length % 4));
+        plain = zlib.inflateRawSync(Buffer.from(norm + pad, 'base64')).toString('utf8');
+      } catch {
+        plain = '';
+      }
+    }
+    if (!plain.startsWith('u1|')) {
+      return {
+        buildingOrVillage: '',
+        fullAddress: plain,
+        landmark: undefined,
+        city: '',
+        state: '',
+        pincode: '',
+        secretCode: '',
+        role: 'user' as const
+      };
+    }
+    const [, bldg, addr, lm, city, state, pin, secretCode, role] = plain.split('|');
+    const cleanLm = lm ? serverDetokenize(lm) : '';
+    return {
+      buildingOrVillage: serverDetokenize(bldg || ''),
+      fullAddress: serverDetokenize(addr || ''),
+      landmark: cleanLm || undefined,
+      city: serverDetokenize(city || ''),
+      state: serverDetokenize(state || ''),
+      pincode: unescapePipeVal(pin || ''),
+      secretCode: String(secretCode || '').replace(/\D/g, '').slice(0, 6),
+      role: (role === 'admin' ? 'admin' : 'user') as 'admin' | 'user'
+    };
+  }
+
+  function encodePackedUser(u: StoredAdminProfile): string {
+    const pin = escapePipeVal((u.pincode || '').trim());
+    const code = String(u.secretCode || '').replace(/\D/g, '').slice(0, 6);
+    return `u1|${serverTokenize(u.buildingOrVillage)}|${serverTokenize(u.fullAddress)}|${serverTokenize(u.landmark || '')}|${serverTokenize(u.city)}|${serverTokenize(u.state)}|${pin}|${code}|admin`;
+  }
+
+  function getDefaultAdminProfile(): StoredAdminProfile {
+    const now = new Date().toISOString();
+    const defaultSecret = String(process.env.ADMIN_DEFAULT_SECRET || '786786').replace(/\D/g, '').slice(0, 6) || '786786';
+    return {
+      id: ADMIN_OWNER_ID,
+      role: 'admin',
+      fullName: 'Rahbar Official (Admin)',
+      phone: '9334808340',
+      age: '28',
+      buildingOrVillage: 'RAZVI SHOP HQ',
+      fullAddress: 'Kishanganj Main Market',
+      landmark: '',
+      city: 'Kishanganj',
+      state: 'Bihar',
+      pincode: '855108',
+      secretCode: defaultSecret,
+      createdAt: now,
+      updatedAt: now
+    };
+  }
+
+  function readLocalAdminProfile(): StoredAdminProfile {
+    const fallback = getDefaultAdminProfile();
+    try {
+      if (fs.existsSync(ADMIN_PROFILE_FILE)) {
+        const parsed = JSON.parse(fs.readFileSync(ADMIN_PROFILE_FILE, 'utf-8')) as Partial<StoredAdminProfile>;
+        if (parsed && typeof parsed === 'object') {
+          const cleanCode = String(parsed.secretCode || '').replace(/\D/g, '').slice(0, 6);
+          return {
+            ...fallback,
+            ...parsed,
+            id: ADMIN_OWNER_ID,
+            role: 'admin',
+            secretCode: /^\d{6}$/.test(cleanCode) ? cleanCode : fallback.secretCode
+          };
+        }
+      }
+    } catch {
+      // Ignore read errors
+    }
+    return fallback;
+  }
+
+  function writeLocalAdminProfile(profile: StoredAdminProfile): void {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+      fs.writeFileSync(ADMIN_PROFILE_FILE, JSON.stringify(profile, null, 2), 'utf-8');
+    } catch (err) {
+      console.warn('Could not persist admin account locally:', err);
+    }
+  }
+
+  function mapSupabaseRowToUser(row: any) {
+    const addr = decodePackedUser(row.packed_data || '');
+    const colSecret = String(row.secret_code || '').replace(/\D/g, '').slice(0, 6);
+    const cleanSecret = /^\d{6}$/.test(colSecret) ? colSecret : addr.secretCode;
+    return {
+      id: row.id,
+      fullName: row.full_name || 'Customer',
+      phone: row.phone || '',
+      age: row.age || '',
+      buildingOrVillage: addr.buildingOrVillage || row.building_or_village || '',
+      fullAddress: addr.fullAddress || row.full_address || '',
+      landmark: addr.landmark || row.landmark || undefined,
+      city: addr.city || row.city || '',
+      state: addr.state || row.state || '',
+      pincode: addr.pincode || row.pincode || '',
+      secretCode: cleanSecret || '',
+      role: row.id === ADMIN_OWNER_ID ? ('admin' as const) : addr.role,
+      createdAt: row.created_at || new Date().toISOString(),
+      updatedAt: row.updated_at || row.created_at || new Date().toISOString()
+    };
+  }
+
+  async function syncAdminProfileToSupabase(profile: StoredAdminProfile): Promise<boolean> {
+    const cfg = getEffectiveConfig();
+    if (!cfg) return false;
+    const payload: Record<string, any> = {
+      id: ADMIN_OWNER_ID,
+      phone: profile.phone,
+      full_name: profile.fullName,
+      age: profile.age,
+      secret_code: profile.secretCode,
+      packed_data: encodePackedUser(profile),
+      created_at: profile.createdAt,
+      updated_at: profile.updatedAt
+    };
+
+    try {
+      let res = await fetch(`${cfg.url}/rest/v1/store_users`, {
+        method: 'POST',
+        headers: {
+          ...buildSupabaseHeaders(cfg.anonKey),
+          Prefer: 'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        if (errText.includes('secret_code') || res.status === 400 || res.status === 422) {
+          const { secret_code: _omit, ...fallbackPayload } = payload;
+          res = await fetch(`${cfg.url}/rest/v1/store_users`, {
+            method: 'POST',
+            headers: {
+              ...buildSupabaseHeaders(cfg.anonKey),
+              Prefer: 'resolution=merge-duplicates,return=minimal'
+            },
+            body: JSON.stringify(fallbackPayload)
+          });
+        }
+      }
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async function loadLatestAdminProfile(): Promise<StoredAdminProfile> {
+    const local = readLocalAdminProfile();
+    const cfg = getEffectiveConfig();
+    if (!cfg) return local;
+
+    try {
+      const res = await fetch(
+        `${cfg.url}/rest/v1/store_users?id=eq.${encodeURIComponent(ADMIN_OWNER_ID)}&select=*&limit=1`,
+        { headers: buildSupabaseHeaders(cfg.anonKey) }
+      );
+      if (res.ok) {
+        const rows = (await res.json()) as any[];
+        if (Array.isArray(rows) && rows[0]) {
+          const remote = mapSupabaseRowToUser(rows[0]);
+          const remoteTs = Date.parse(remote.updatedAt || '');
+          const localTs = Date.parse(local.updatedAt || '');
+          if (!fs.existsSync(ADMIN_PROFILE_FILE) || (remoteTs && (!localTs || remoteTs >= localTs))) {
+            const merged: StoredAdminProfile = {
+              ...local,
+              ...remote,
+              id: ADMIN_OWNER_ID,
+              role: 'admin',
+              secretCode: /^\d{6}$/.test(remote.secretCode) ? remote.secretCode : local.secretCode
+            };
+            writeLocalAdminProfile(merged);
+            return merged;
+          }
+        }
+      }
+    } catch {
+      // Fallback to local
+    }
+    return local;
+  }
+
+  app.post('/api/admin-login', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const cleanUser = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+    const cleanPass = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
+
+    const expectedUser = (process.env.ADMIN_USERNAME || 'RAHBAR786').trim();
+    const expectedPass = (process.env.ADMIN_PASSWORD || 'RAHBAR7860').trim();
+
+    if (cleanUser === expectedUser && cleanPass === expectedPass) {
+      const adminProfile = await loadLatestAdminProfile();
+      res.json({ ok: true, profile: adminProfile });
+      return;
+    }
+
+    res.status(401).json({
+      ok: false,
+      error: 'Galat Username ya Password! Kripya sahi owner credentials enter karein.'
+    });
+  });
+
+  app.post('/api/secret-login', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const rawCode = typeof req.body?.secretCode === 'string' ? req.body.secretCode : '';
+    const cleanCode = rawCode.replace(/\D/g, '');
+    if (!/^\d{6}$/.test(cleanCode)) {
+      res.status(400).json({ ok: false, error: 'Sirf 6 digit ka numeric Secret Code enter karein.' });
+      return;
+    }
+
+    const adminProfile = await loadLatestAdminProfile();
+    if (adminProfile.secretCode === cleanCode) {
+      res.json({ ok: true, role: 'admin', profile: adminProfile });
+      return;
+    }
+
+    const cfg = getEffectiveConfig();
+    if (cfg) {
+      try {
+        const rows = await fetchTableFromSupabase(cfg, 'store_users', 'updated_at.desc');
+        if (Array.isArray(rows)) {
+          for (const row of rows) {
+            const mapped = mapSupabaseRowToUser(row);
+            if (mapped.secretCode === cleanCode) {
+              if (mapped.id === ADMIN_OWNER_ID || mapped.role === 'admin') {
+                res.json({ ok: true, role: 'admin', profile: mapped });
+              } else {
+                res.json({ ok: true, role: 'user', profile: mapped });
+              }
+              return;
+            }
+          }
+        }
+      } catch {
+        // Ignore network failure and return 404
+      }
+    }
+
+    res.status(404).json({
+      ok: false,
+      error: 'Ye 6-digit Secret Code match nahi hua. Kripya sahi code check karein.'
+    });
+  });
+
+  app.post('/api/check-secret-code', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const rawCode = typeof req.body?.secretCode === 'string' ? req.body.secretCode : '';
+    const excludeId = typeof req.body?.excludeUserId === 'string' ? req.body.excludeUserId.trim() : '';
+    const cleanCode = rawCode.replace(/\D/g, '');
+    if (!/^\d{6}$/.test(cleanCode)) {
+      res.status(400).json({ available: false, error: 'Enter exactly 6 digits.' });
+      return;
+    }
+
+    const adminProfile = await loadLatestAdminProfile();
+    if (adminProfile.secretCode === cleanCode && excludeId !== ADMIN_OWNER_ID) {
+      res.json({ available: false });
+      return;
+    }
+
+    const cfg = getEffectiveConfig();
+    if (cfg) {
+      try {
+        const rows = await fetchTableFromSupabase(cfg, 'store_users');
+        if (Array.isArray(rows)) {
+          const conflict = rows.some((row) => {
+            if (excludeId && row.id === excludeId) return false;
+            const mapped = mapSupabaseRowToUser(row);
+            return mapped.secretCode === cleanCode;
+          });
+          if (conflict) {
+            res.json({ available: false });
+            return;
+          }
+        }
+      } catch {
+        // Ignore network error
+      }
+    }
+
+    res.json({ available: true });
+  });
+
+  app.get('/api/admin-profile', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.headers['x-admin-session'] !== 'authorized') {
+      res.status(403).json({ ok: false, error: 'Admin authorization required.' });
+      return;
+    }
+    const profile = await loadLatestAdminProfile();
+    res.json({ ok: true, profile });
+  });
+
+  app.post('/api/admin-profile', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.headers['x-admin-session'] !== 'authorized') {
+      res.status(403).json({ ok: false, error: 'Admin authorization required.' });
+      return;
+    }
+
+    const current = await loadLatestAdminProfile();
+    const body = req.body || {};
+    const nextCode = typeof body.secretCode === 'string'
+      ? body.secretCode.replace(/\D/g, '').slice(0, 6)
+      : current.secretCode;
+
+    if (!/^\d{6}$/.test(nextCode)) {
+      res.status(400).json({ ok: false, error: 'Secret code must be exactly 6 numeric digits.' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updated: StoredAdminProfile = {
+      id: ADMIN_OWNER_ID,
+      role: 'admin',
+      fullName: String(body.fullName ?? current.fullName).trim() || current.fullName,
+      phone: String(body.phone ?? current.phone).replace(/\D/g, '').slice(0, 15) || current.phone,
+      age: String(body.age ?? current.age).trim() || current.age,
+      buildingOrVillage: String(body.buildingOrVillage ?? current.buildingOrVillage).trim(),
+      fullAddress: String(body.fullAddress ?? current.fullAddress).trim(),
+      landmark: body.landmark !== undefined ? String(body.landmark || '').trim() : current.landmark,
+      city: String(body.city ?? current.city).trim(),
+      state: String(body.state ?? current.state).trim(),
+      pincode: String(body.pincode ?? current.pincode).replace(/\D/g, '').slice(0, 6),
+      secretCode: nextCode,
+      createdAt: current.createdAt || now,
+      updatedAt: now
+    };
+
+    writeLocalAdminProfile(updated);
+    const syncedToSupabase = await syncAdminProfileToSupabase(updated);
+    res.json({ ok: true, profile: updated, syncedToSupabase });
   });
 
   // ---------------------------------------------------------------------------

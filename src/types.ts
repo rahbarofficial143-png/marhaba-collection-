@@ -158,6 +158,8 @@ export interface UserProfile {
   city: string;
   state: string;
   pincode: string;
+  secretCode?: string;
+  role?: 'user' | 'admin';
   createdAt: string;
   updatedAt: string;
 }

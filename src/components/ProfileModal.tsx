@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, User, Package, Edit3, CheckCircle2, MapPin, Phone, Calendar,
-  Building2, Home, Truck, Clock, ShoppingBag, ChevronDown, ChevronUp, ShieldCheck, LogOut
+  Building2, Home, Truck, Clock, ShoppingBag, ChevronDown, ChevronUp, ShieldCheck, LogOut,
+  KeyRound, Eye, EyeOff
 } from 'lucide-react';
 import { Order, UserProfile } from '../types';
+import { buildStableUserId, normalizeSecretCode, isValidSecretCode } from '../lib/userCodec';
+import { checkSecretCodeDuplicate } from '../lib/supabase';
 
 interface ProfileModalProps {
   isOpen: boolean;
   initialTab?: 'profile' | 'orders';
   onClose: () => void;
   userProfile: UserProfile | null;
+  localUsers?: UserProfile[];
   onUpdateProfile: (profile: UserProfile) => void;
   onOpenCreateAccount: () => void;
   onLogout: () => void;
@@ -76,6 +80,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   initialTab = 'profile',
   onClose,
   userProfile,
+  localUsers = [],
   onUpdateProfile,
   onOpenCreateAccount,
   onLogout,
@@ -88,10 +93,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [expandedOrderIds, setExpandedOrderIds] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Secret code states
+  const [showSecretCode, setShowSecretCode] = useState(false);
+  const [isChangingSecret, setIsChangingSecret] = useState(false);
+  const [quickSecretInput, setQuickSecretInput] = useState('');
+  const [quickSecretError, setQuickSecretError] = useState<string | null>(null);
+  const [isSavingSecret, setIsSavingSecret] = useState(false);
+  const [showEditSecret, setShowEditSecret] = useState(false);
+
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
     age: '',
+    secretCode: '',
     buildingOrVillage: '',
     fullAddress: '',
     landmark: '',
@@ -105,13 +119,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       setActiveTab(initialTab);
       setIsEditing(false);
       setConfirmLogout(false);
+      setIsChangingSecret(false);
+      setQuickSecretError(null);
+      setShowSecretCode(false);
       setSaveNotice(null);
       setErrors({});
       if (userProfile) {
+        const cleanCode = normalizeSecretCode(userProfile.secretCode || '');
+        setQuickSecretInput(cleanCode);
         setFormData({
           fullName: userProfile.fullName,
           phone: userProfile.phone,
           age: userProfile.age,
+          secretCode: cleanCode,
           buildingOrVillage: userProfile.buildingOrVillage,
           fullAddress: userProfile.fullAddress,
           landmark: userProfile.landmark || '',
@@ -136,7 +156,43 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }));
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleQuickSecretSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile || isSavingSecret) return;
+    setQuickSecretError(null);
+    const clean = normalizeSecretCode(quickSecretInput);
+    if (!isValidSecretCode(clean)) {
+      setQuickSecretError('Sirf 6 digit ka numeric Secret Code enter karein.');
+      return;
+    }
+
+    const myId = buildStableUserId(userProfile.phone, userProfile.id, userProfile.role);
+    setIsSavingSecret(true);
+    try {
+      const taken = await checkSecretCodeDuplicate(clean, myId, localUsers);
+      if (taken) {
+        setQuickSecretError('Ye 6-digit code kisi aur account me use ho raha hai. Doosra 6-digit code daalein.');
+        setIsSavingSecret(false);
+        return;
+      }
+
+      const updated: UserProfile = {
+        ...userProfile,
+        id: myId,
+        secretCode: clean,
+        updatedAt: new Date().toISOString()
+      };
+      onUpdateProfile(updated);
+      setFormData((prev) => ({ ...prev, secretCode: clean }));
+      setIsChangingSecret(false);
+      setSaveNotice('6-Digit Secret Code updated & synced to Supabase!');
+      setTimeout(() => setSaveNotice(null), 4000);
+    } finally {
+      setIsSavingSecret(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
     if (!formData.fullName.trim()) newErrors.fullName = 'Name required';
@@ -144,6 +200,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     const numericAge = Number(formData.age.trim());
     if (!formData.age.trim() || Number.isNaN(numericAge) || numericAge < 10 || numericAge > 110) {
       newErrors.age = 'Valid age required';
+    }
+    if (!isValidSecretCode(formData.secretCode)) {
+      newErrors.secretCode = '6-digit numeric secret code required';
     }
     if (!formData.buildingOrVillage.trim()) newErrors.buildingOrVillage = 'Building / Village required';
     if (!formData.fullAddress.trim()) newErrors.fullAddress = 'Full address required';
@@ -154,10 +213,24 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) return;
 
+    const cleanSecret = normalizeSecretCode(formData.secretCode);
+    const myId = buildStableUserId(formData.phone.trim(), userProfile?.id, userProfile?.role);
+    const taken = await checkSecretCodeDuplicate(cleanSecret, myId, localUsers);
+    if (taken) {
+      setErrors((prev) => ({
+        ...prev,
+        secretCode: 'Ye 6-digit Secret Code pehle se kisi aur account me use ho raha hai.'
+      }));
+      return;
+    }
+
     const updated: UserProfile = {
+      id: myId,
       fullName: formData.fullName.trim(),
       phone: formData.phone.trim(),
       age: formData.age.trim(),
+      secretCode: cleanSecret,
+      role: userProfile?.role || 'user',
       buildingOrVillage: formData.buildingOrVillage.trim(),
       fullAddress: formData.fullAddress.trim(),
       landmark: formData.landmark.trim() || undefined,
@@ -170,7 +243,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
     onUpdateProfile(updated);
     setIsEditing(false);
-    setSaveNotice('Profile details saved permanently on your device!');
+    setSaveNotice('Profile details & 6-Digit Secret Code synced to Supabase!');
     setTimeout(() => setSaveNotice(null), 3500);
   };
 
@@ -354,9 +427,87 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       </div>
                     </div>
 
+                    {/* 6-Digit Secret Code Box with Instant Change & Supabase Sync */}
+                    <div className="bg-white border border-[#9F2089]/30 rounded-xl p-3 space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <KeyRound className="w-4 h-4 text-[#9F2089]" />
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-[#9F2089]">
+                              6-Digit Secret Code (Login PIN)
+                            </div>
+                            <div className="font-mono font-black text-sm tracking-[0.25em] text-[#222222] mt-0.5">
+                              {userProfile.secretCode
+                                ? showSecretCode
+                                  ? userProfile.secretCode
+                                  : '••••••'
+                                : 'Not Set'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {userProfile.secretCode && (
+                            <button
+                              type="button"
+                              onClick={() => setShowSecretCode((prev) => !prev)}
+                              className="p-1.5 rounded-md border border-[#E8E8E8] hover:bg-[#FAF8F5] text-[#555555] cursor-pointer"
+                              title={showSecretCode ? 'Hide Secret Code' : 'Show Secret Code'}
+                            >
+                              {showSecretCode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuickSecretInput(normalizeSecretCode(userProfile.secretCode || ''));
+                              setQuickSecretError(null);
+                              setIsChangingSecret((prev) => !prev);
+                            }}
+                            className="px-2.5 py-1.5 bg-[#FDE5F4] hover:bg-[#9F2089] hover:text-white text-[#9F2089] font-bold text-[11px] rounded-md transition-colors cursor-pointer"
+                          >
+                            {isChangingSecret ? 'Cancel' : userProfile.secretCode ? 'Change Secret Code' : 'Set 6-Digit Code'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {isChangingSecret && (
+                        <form onSubmit={handleQuickSecretSave} className="pt-2 border-t border-[#F0EAE2] space-y-2">
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <input
+                              type="tel"
+                              inputMode="numeric"
+                              pattern="\d{6}"
+                              maxLength={6}
+                              value={quickSecretInput}
+                              onChange={(e) => {
+                                setQuickSecretInput(normalizeSecretCode(e.target.value));
+                                setQuickSecretError(null);
+                              }}
+                              placeholder="Enter new 6-digit code"
+                              className="flex-1 px-3 py-2 border border-[#CCCCCC] rounded-lg font-mono font-bold tracking-[0.25em] focus:border-[#9F2089] focus:outline-none"
+                            />
+                            <button
+                              type="submit"
+                              disabled={isSavingSecret || quickSecretInput.length !== 6}
+                              className="px-4 py-2 bg-[#038D63] hover:bg-[#027350] disabled:opacity-50 text-white font-bold rounded-lg text-[11px] shrink-0 cursor-pointer"
+                            >
+                              {isSavingSecret ? 'Saving...' : 'Save Secret Code'}
+                            </button>
+                          </div>
+                          {quickSecretError && (
+                            <p className="text-[11px] text-red-600 font-medium">{quickSecretError}</p>
+                          )}
+                          <p className="text-[10px] text-[#666666]">
+                            Sirf 6 digits allow hain · Change karte hi Supabase me automatically update ho jayega.
+                          </p>
+                        </form>
+                      )}
+                    </div>
+
                     <div className="flex items-center gap-1.5 text-[11px] text-[#038D63] font-medium pt-1">
                       <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                      <span>Automatically pre-fills your delivery address whenever you place an order.</span>
+                      <span>Automatically pre-fills your delivery address &amp; restores via 6-digit Secret Code.</span>
                     </div>
 
                     {/* Account Logout Bar */}
@@ -456,6 +607,39 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                           className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
                         />
                         {errors.age && <p className="text-[10px] text-red-600 mt-0.5">{errors.age}</p>}
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="flex items-center justify-between font-bold mb-1">
+                          <span className="flex items-center gap-1">
+                            <KeyRound className="w-3 h-3 text-[#9F2089]" />
+                            <span>6-Digit Secret Code * (Login PIN)</span>
+                          </span>
+                          <span className="text-[10px] font-mono text-[#666666]">{formData.secretCode.length}/6 digits</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showEditSecret ? 'tel' : 'password'}
+                            inputMode="numeric"
+                            pattern="\d{6}"
+                            maxLength={6}
+                            value={formData.secretCode}
+                            onChange={(e) =>
+                              setFormData({ ...formData, secretCode: normalizeSecretCode(e.target.value) })
+                            }
+                            placeholder="6-digit secret code"
+                            className="w-full pl-3 pr-9 py-2 bg-white border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none font-mono tracking-[0.25em] font-bold"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowEditSecret((prev) => !prev)}
+                            className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-[#777777] hover:text-[#222222]"
+                            tabIndex={-1}
+                          >
+                            {showEditSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                        {errors.secretCode && <p className="text-[10px] text-red-600 mt-0.5">{errors.secretCode}</p>}
                       </div>
 
                       <div className="sm:col-span-2">
