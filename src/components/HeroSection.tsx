@@ -154,18 +154,18 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 </div>
               </div>
 
-              {/* Right / Bottom Full Image Showcase (Zero Cropping on Phone & Desktop) */}
+              {/* Right / Bottom Full Image Showcase (Tight fit to exact banner image size, zero dark red sidebars) */}
               <div
                 className={`md:col-span-5 flex items-center justify-center px-3 pt-1 ${
-                  activeBanners.length > 1 ? 'pb-11 md:py-5 md:pr-14' : 'pb-4 md:py-5 md:pr-6'
+                  activeBanners.length > 1 ? 'pb-11 md:py-4 md:pr-14' : 'pb-4 md:py-4 md:pr-6'
                 } md:pl-2`}
               >
                 {current.imageUrl && (
-                  <div className="w-full flex items-center justify-center rounded-lg bg-black/15 p-1.5 sm:p-2 border border-white/15">
+                  <div className="inline-flex items-center justify-center rounded-lg overflow-hidden border border-white/20 shadow-md mx-auto max-w-full">
                     <img
                       src={current.imageUrl}
                       alt={current.title}
-                      className="w-auto max-w-full max-h-[260px] sm:max-h-[300px] md:max-h-[320px] h-auto object-contain rounded-md shadow-md mx-auto"
+                      className="block w-auto max-w-full max-h-[260px] sm:max-h-[300px] md:max-h-[320px] h-auto object-contain"
                       referrerPolicy="no-referrer"
                     />
                   </div>
