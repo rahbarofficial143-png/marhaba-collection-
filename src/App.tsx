@@ -592,7 +592,30 @@ export default function App() {
     }
 
     // Customer account restoration (exact saved profile & address)
-    const restored = res.profile;
+    let restored = res.profile;
+    if ((!restored.fullAddress?.trim() || !restored.pincode?.trim()) && restored.phone?.trim()) {
+      const normalizedPhone = restored.phone.replace(/\D/g, '').slice(-10);
+      const latestOrderWithAddress = [...recentOrders]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .find((o) => {
+          const orderPhone = (o.shippingAddress?.phone || '').replace(/\D/g, '').slice(-10);
+          return (
+            Boolean(orderPhone && normalizedPhone && orderPhone === normalizedPhone) &&
+            Boolean(o.shippingAddress?.addressLine?.trim() && o.shippingAddress?.pincode?.trim())
+          );
+        });
+      if (latestOrderWithAddress?.shippingAddress) {
+        const sa = latestOrderWithAddress.shippingAddress;
+        restored = {
+          ...restored,
+          fullAddress: sa.addressLine.trim(),
+          city: sa.city?.trim() || restored.city || '',
+          state: sa.state?.trim() || restored.state || '',
+          pincode: sa.pincode.trim(),
+          landmark: sa.landmark?.trim() || restored.landmark
+        };
+      }
+    }
     setUserProfile(restored);
     try {
       localStorage.setItem('marhaba_user_profile', JSON.stringify(restored));
@@ -928,7 +951,51 @@ export default function App() {
       return next;
     });
     setCart([]);
+
+    // Save / update customer delivery address permanently in profile, localStorage & Supabase
     const cfg = getSupabaseConfig();
+    const sa = order.shippingAddress;
+    if (sa) {
+      const accountPhone = userProfile?.phone?.trim() || sa.phone?.trim() || '';
+      const stableId = buildStableUserId(accountPhone, userProfile?.id, userProfile?.role);
+      const nowIso = new Date().toISOString();
+      const updatedUserProfile: UserProfile = {
+        id: stableId,
+        fullName: sa.fullName?.trim() || userProfile?.fullName || 'Customer',
+        phone: accountPhone,
+        age: userProfile?.age || '',
+        secretCode: userProfile?.secretCode,
+        role: userProfile?.role || 'user',
+        buildingOrVillage: '',
+        fullAddress: sa.addressLine?.trim() || userProfile?.fullAddress || '',
+        landmark: sa.landmark?.trim() || userProfile?.landmark || undefined,
+        city: sa.city?.trim() || userProfile?.city || '',
+        state: sa.state?.trim() || userProfile?.state || '',
+        pincode: sa.pincode?.trim() || userProfile?.pincode || '',
+        createdAt: userProfile?.createdAt || nowIso,
+        updatedAt: nowIso
+      };
+
+      setUserProfile(updatedUserProfile);
+      try {
+        localStorage.setItem('marhaba_user_profile', JSON.stringify(updatedUserProfile));
+      } catch (e) {
+        console.error('Failed saving updated delivery address to localStorage', e);
+      }
+      setStoreUsers((prev) => {
+        const idx = prev.findIndex((u) => buildStableUserId(u.phone, u.id, u.role) === stableId);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = updatedUserProfile;
+          return next;
+        }
+        return [updatedUserProfile, ...prev];
+      });
+      saveUserToSupabase(updatedUserProfile, cfg).catch((err) =>
+        console.warn('Could not sync updated delivery address to Supabase store_users', err)
+      );
+    }
+
     if (cfg.url && cfg.anonKey) {
       saveOrderToSupabase(order, cfg).catch((err) =>
         console.warn('Could not auto-sync order to Supabase Table Editor', err)

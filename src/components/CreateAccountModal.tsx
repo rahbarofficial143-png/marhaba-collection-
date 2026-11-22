@@ -2,10 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   UserCheck,
   Phone,
-  MapPin,
-  Building2,
-  Home,
-  Calendar,
   ShieldCheck,
   CheckCircle2,
   KeyRound,
@@ -14,7 +10,8 @@ import {
   LogIn,
   UserPlus,
   AlertCircle,
-  Loader2
+  Loader2,
+  User
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { normalizeSecretCode, isValidSecretCode } from '../lib/userCodec';
@@ -37,18 +34,11 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
 }) => {
   const [authMode, setAuthMode] = useState<'register' | 'secret_login'>('register');
 
-  // Register state
+  // Strictly 3 initial onboarding fields: Name, Phone Number, 6-Digit Secret Code
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [age, setAge] = useState('');
   const [secretCode, setSecretCode] = useState('');
   const [showRegisterSecret, setShowRegisterSecret] = useState(false);
-  const [buildingOrVillage, setBuildingOrVillage] = useState('');
-  const [fullAddress, setFullAddress] = useState('');
-  const [landmark, setLandmark] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [pincode, setPincode] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
@@ -89,20 +79,11 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    if (!fullName.trim()) newErrors.fullName = 'Please enter your full name';
-    if (!/^\d{10}$/.test(phone.trim())) newErrors.phone = 'Enter valid 10-digit mobile number';
-    const numericAge = Number(age.trim());
-    if (!age.trim() || Number.isNaN(numericAge) || numericAge < 10 || numericAge > 110) {
-      newErrors.age = 'Enter valid age';
-    }
+    if (!fullName.trim()) newErrors.fullName = 'Apna poora naam enter karein';
+    if (!/^\d{10}$/.test(phone.trim())) newErrors.phone = '10-digit mobile number enter karein';
     if (!isValidSecretCode(secretCode)) {
       newErrors.secretCode = 'Sirf 6 digit ka Secret Code enter karein (e.g. 458912)';
     }
-    if (!buildingOrVillage.trim()) newErrors.buildingOrVillage = 'Enter village, house, or building name';
-    if (!fullAddress.trim()) newErrors.fullAddress = 'Enter full street / area address';
-    if (!city.trim()) newErrors.city = 'Enter city / town name';
-    if (!state.trim()) newErrors.state = 'Enter state name';
-    if (!/^\d{6}$/.test(pincode.trim())) newErrors.pincode = 'Enter valid 6-digit pincode';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -128,15 +109,15 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
       const profile: UserProfile = {
         fullName: fullName.trim(),
         phone: phone.trim(),
-        age: age.trim(),
+        age: '',
         secretCode: cleanSecret,
         role: 'user',
-        buildingOrVillage: buildingOrVillage.trim(),
-        fullAddress: fullAddress.trim(),
-        landmark: landmark.trim() || undefined,
-        city: city.trim(),
-        state: state.trim(),
-        pincode: pincode.trim(),
+        buildingOrVillage: '',
+        fullAddress: '',
+        landmark: undefined,
+        city: '',
+        state: '',
+        pincode: '',
         createdAt: now,
         updatedAt: now
       };
@@ -170,7 +151,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn text-[#222222]">
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-[#E8E8E8] overflow-hidden my-auto max-h-[95vh] flex flex-col">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-[#E8E8E8] overflow-hidden my-auto max-h-[95vh] flex flex-col">
         {/* Brand Header */}
         <div className="bg-gradient-to-r from-[#4B0013] via-[#80182E] to-[#9F2089] text-white px-5 py-4 shrink-0">
           <div className="flex items-center justify-between gap-3">
@@ -195,7 +176,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
                 </div>
                 <p className="text-[11px] text-white/85 mt-0.5">
                   {authMode === 'register'
-                    ? 'Create Your Account · Saved in Supabase & Device'
+                    ? 'Enter Name, Phone & 6-Digit Secret Code'
                     : 'Login with 6-Digit Secret Code (User / Admin)'}
                 </p>
               </div>
@@ -210,7 +191,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
           </div>
         </div>
 
-        {/* Mode Switcher: Create Account vs Login with 6-Digit Secret Code */}
+        {/* Mode Switcher: Quick Entry vs Login with 6-Digit Secret Code */}
         <div className="grid grid-cols-2 border-b border-[#E8E8E8] bg-[#FAF8F5] shrink-0 text-xs font-bold">
           <button
             type="button"
@@ -252,7 +233,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
               <div className="space-y-1">
                 <p className="font-bold">6-Digit Secret Code se Direct Login Karein</p>
                 <p className="text-[11px] leading-relaxed text-[#5A1E46]">
-                  Agar aapne pehle account banaya tha ya logout kar diya tha, toh apna <strong>6-digit Secret Code</strong> daalte hi aapka poora Address, Name, Phone aur Profile (ya Admin Panel) turant pahle jaisa wapas open ho jayega.
+                  Agar aapne pehle account banaya tha ya logout kar diya tha, toh apna <strong>6-digit Secret Code</strong> daalte hi aapka saved Name, Phone aur Delivery Address turant wapas open ho jayega.
                 </p>
               </div>
             </div>
@@ -317,7 +298,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
               ) : (
                 <>
                   <LogIn className="w-4 h-4 text-[#FECE57]" />
-                  <span>Login &amp; Restore My Profile</span>
+                  <span>Login &amp; Open Store</span>
                 </>
               )}
             </button>
@@ -333,7 +314,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
             </div>
           </form>
         ) : (
-          <form onSubmit={handleSubmit} className="p-5 space-y-3.5 overflow-y-auto flex-1 text-xs">
+          <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 text-xs">
             <div className="p-3 bg-[#FDE5F4]/40 border border-[#9F2089]/25 rounded-lg text-[11px] text-[#4B0013] flex items-center justify-between gap-2">
               <div className="flex items-start gap-2">
                 <ShieldCheck className="w-4 h-4 text-[#9F2089] shrink-0 mt-0.5" />
@@ -350,61 +331,60 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="sm:col-span-2">
-                <label className="block font-bold text-[#222222] mb-1">Full Name *</label>
+            <div className="space-y-3.5">
+              {/* 1. Full Name */}
+              <div>
+                <label className="flex items-center gap-1.5 font-bold text-[#222222] mb-1">
+                  <User className="w-3.5 h-3.5 text-[#9F2089]" />
+                  <span>Your Name *</span>
+                </label>
                 <input
                   type="text"
+                  autoFocus
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Enter your full name"
-                  className="w-full px-3 py-2.5 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none"
+                  onChange={(e) => {
+                    setFullName(e.target.value);
+                    if (errors.fullName) setErrors((prev) => ({ ...prev, fullName: '' }));
+                  }}
+                  placeholder="Apna poora naam likhein"
+                  className="w-full px-3.5 py-2.5 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none"
                 />
                 {errors.fullName && <p className="text-[11px] text-red-600 mt-0.5">{errors.fullName}</p>}
               </div>
 
+              {/* 2. Phone Number */}
               <div>
-                <label className="flex items-center gap-1 font-bold text-[#222222] mb-1">
+                <label className="flex items-center gap-1.5 font-bold text-[#222222] mb-1">
                   <Phone className="w-3.5 h-3.5 text-[#9F2089]" />
-                  <span>Phone No *</span>
+                  <span>Phone Number (10-Digit) *</span>
                 </label>
                 <input
                   type="tel"
                   inputMode="numeric"
                   maxLength={10}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                  onChange={(e) => {
+                    setPhone(e.target.value.replace(/\D/g, ''));
+                    if (errors.phone) setErrors((prev) => ({ ...prev, phone: '' }));
+                  }}
                   placeholder="10-digit mobile number"
-                  className="w-full px-3 py-2.5 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none font-mono"
+                  className="w-full px-3.5 py-2.5 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none font-mono font-bold tracking-wider"
                 />
                 {errors.phone && <p className="text-[11px] text-red-600 mt-0.5">{errors.phone}</p>}
               </div>
 
-              <div>
-                <label className="flex items-center gap-1 font-bold text-[#222222] mb-1">
-                  <Calendar className="w-3.5 h-3.5 text-[#9F2089]" />
-                  <span>Age *</span>
-                </label>
-                <input
-                  type="number"
-                  min={10}
-                  max={110}
-                  value={age}
-                  onChange={(e) => setAge(e.target.value)}
-                  placeholder="e.g. 24"
-                  className="w-full px-3 py-2.5 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none"
-                />
-                {errors.age && <p className="text-[11px] text-red-600 mt-0.5">{errors.age}</p>}
-              </div>
-
-              {/* Strictly 6-Digit Secret Code */}
-              <div className="sm:col-span-2 p-3 bg-[#FAF8F5] border border-[#9F2089]/30 rounded-xl space-y-1.5">
+              {/* 3. Strictly 6-Digit Secret Code */}
+              <div className="p-3.5 bg-[#FAF8F5] border border-[#9F2089]/30 rounded-xl space-y-1.5">
                 <label className="flex items-center justify-between font-bold text-[#222222]">
                   <span className="flex items-center gap-1.5">
                     <KeyRound className="w-3.5 h-3.5 text-[#9F2089]" />
                     <span>6-Digit Secret Code * (Login PIN)</span>
                   </span>
-                  <span className={`text-[10px] font-mono font-bold ${secretCode.length === 6 ? 'text-emerald-700' : 'text-[#777777]'}`}>
+                  <span
+                    className={`text-[10px] font-mono font-bold ${
+                      secretCode.length === 6 ? 'text-emerald-700' : 'text-[#777777]'
+                    }`}
+                  >
                     {secretCode.length}/6 digits
                   </span>
                 </label>
@@ -420,7 +400,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
                       if (errors.secretCode) setErrors((prev) => ({ ...prev, secretCode: '' }));
                     }}
                     placeholder="6-digit secret code (e.g. 123456)"
-                    className="w-full pl-3 pr-10 py-2.5 bg-white border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none font-mono tracking-[0.25em] font-bold"
+                    className="w-full pl-3.5 pr-10 py-2.5 bg-white border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none font-mono tracking-[0.3em] font-bold"
                   />
                   <button
                     type="button"
@@ -431,103 +411,21 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
                     {showRegisterSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-[10px] text-[#666666]">
-                  Sirf 6 number ka code daalein. Logout ke baad dubara yahi 6-digit code daalkar apna poora profile &amp; address wapas login kar sakte hain.
+                <p className="text-[10px] text-[#666666] leading-relaxed">
+                  Bas Name, Phone aur ye 6-digit Secret Code daalkar store khol lein — Supabase me save ho jayega. Address aap order karte waqt save kar sakte hain.
                 </p>
                 {errors.secretCode && <p className="text-[11px] text-red-600 font-medium">{errors.secretCode}</p>}
               </div>
-
-              <div className="sm:col-span-2">
-                <label className="flex items-center gap-1 font-bold text-[#222222] mb-1">
-                  <Building2 className="w-3.5 h-3.5 text-[#9F2089]" />
-                  <span>Village / House / Building Name *</span>
-                </label>
-                <input
-                  type="text"
-                  value={buildingOrVillage}
-                  onChange={(e) => setBuildingOrVillage(e.target.value)}
-                  placeholder="e.g. Ward No. 12, Noor Nagar / Green Residency"
-                  className="w-full px-3 py-2.5 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none"
-                />
-                {errors.buildingOrVillage && <p className="text-[11px] text-red-600 mt-0.5">{errors.buildingOrVillage}</p>}
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="flex items-center gap-1 font-bold text-[#222222] mb-1">
-                  <Home className="w-3.5 h-3.5 text-[#9F2089]" />
-                  <span>Full Address (Road / Mohalla / Area) *</span>
-                </label>
-                <textarea
-                  rows={2}
-                  value={fullAddress}
-                  onChange={(e) => setFullAddress(e.target.value)}
-                  placeholder="House No, Street, Post Office, Area details..."
-                  className="w-full px-3 py-2 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none resize-none"
-                />
-                {errors.fullAddress && <p className="text-[11px] text-red-600 mt-0.5">{errors.fullAddress}</p>}
-              </div>
-
-              <div>
-                <label className="block font-bold text-[#222222] mb-1">City / Town *</label>
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="e.g. Kishanganj"
-                  className="w-full px-3 py-2.5 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none"
-                />
-                {errors.city && <p className="text-[11px] text-red-600 mt-0.5">{errors.city}</p>}
-              </div>
-
-              <div>
-                <label className="block font-bold text-[#222222] mb-1">State *</label>
-                <input
-                  type="text"
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  placeholder="e.g. Bihar"
-                  className="w-full px-3 py-2.5 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none"
-                />
-                {errors.state && <p className="text-[11px] text-red-600 mt-0.5">{errors.state}</p>}
-              </div>
-
-              <div>
-                <label className="flex items-center gap-1 font-bold text-[#222222] mb-1">
-                  <MapPin className="w-3.5 h-3.5 text-[#9F2089]" />
-                  <span>Pincode *</span>
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={pincode}
-                  onChange={(e) => setPincode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="6-digit pincode"
-                  className="w-full px-3 py-2.5 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none font-mono"
-                />
-                {errors.pincode && <p className="text-[11px] text-red-600 mt-0.5">{errors.pincode}</p>}
-              </div>
-
-              <div>
-                <label className="block font-bold text-[#222222] mb-1">Nearby Landmark (Optional)</label>
-                <input
-                  type="text"
-                  value={landmark}
-                  onChange={(e) => setLandmark(e.target.value)}
-                  placeholder="e.g. Near Jama Masjid / Station"
-                  className="w-full px-3 py-2.5 border border-[#CCCCCC] rounded-lg focus:border-[#9F2089] focus:ring-1 focus:ring-[#9F2089] focus:outline-none"
-                />
-              </div>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-1">
               <button
                 type="submit"
                 disabled={isSaving}
                 className="w-full py-3 bg-[#9F2089] hover:bg-[#80182E] disabled:opacity-60 text-white font-bold text-sm rounded-xl shadow-lg transition-all active:scale-99 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4 text-[#FECE57]" />
-                <span>{isSaving ? 'Saving Account to Supabase...' : 'Save Account & Continue'}</span>
+                <span>{isSaving ? 'Saving to Supabase...' : 'Enter Website & Continue →'}</span>
               </button>
             </div>
           </form>

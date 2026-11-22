@@ -3360,14 +3360,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </td>
                                 <td className="py-2.5 px-2.5">
                                   <div className="font-semibold text-[#333333] truncate max-w-[120px]">
-                                    {u.city}
+                                    {u.city || <span className="text-[10px] text-[#999999] italic">Pending (1st Order)</span>}
                                   </div>
                                   <div className="text-[10px] text-[#777777] truncate max-w-[120px]">
-                                    {u.state}
+                                    {u.state || ''}
                                   </div>
                                 </td>
                                 <td className="py-2.5 px-2.5 font-mono text-[11px] text-[#444444] hidden md:table-cell">
-                                  {u.pincode}
+                                  {u.pincode || '—'}
                                 </td>
                                 <td className="py-2.5 px-2.5 text-right whitespace-nowrap">
                                   <span className="text-[10px] font-mono font-bold text-[#038D63] bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">

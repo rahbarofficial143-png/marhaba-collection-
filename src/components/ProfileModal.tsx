@@ -197,18 +197,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     const newErrors: Record<string, string> = {};
     if (!formData.fullName.trim()) newErrors.fullName = 'Name required';
     if (!/^\d{10}$/.test(formData.phone.trim())) newErrors.phone = '10-digit phone required';
-    const numericAge = Number(formData.age.trim());
-    if (!formData.age.trim() || Number.isNaN(numericAge) || numericAge < 10 || numericAge > 110) {
-      newErrors.age = 'Valid age required';
+    if (formData.age.trim()) {
+      const numericAge = Number(formData.age.trim());
+      if (Number.isNaN(numericAge) || numericAge < 10 || numericAge > 110) {
+        newErrors.age = 'Valid age required (10–110)';
+      }
     }
     if (!isValidSecretCode(formData.secretCode)) {
       newErrors.secretCode = '6-digit numeric secret code required';
     }
-    if (!formData.buildingOrVillage.trim()) newErrors.buildingOrVillage = 'Building / Village required';
-    if (!formData.fullAddress.trim()) newErrors.fullAddress = 'Full address required';
-    if (!formData.city.trim()) newErrors.city = 'City required';
-    if (!formData.state.trim()) newErrors.state = 'State required';
-    if (!/^\d{6}$/.test(formData.pincode.trim())) newErrors.pincode = '6-digit pincode required';
+    if (formData.pincode.trim() && !/^\d{6}$/.test(formData.pincode.trim())) {
+      newErrors.pincode = '6-digit pincode required';
+    }
 
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) return;
@@ -267,7 +267,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 {userProfile?.fullName || 'My Account'}
               </h2>
               <p className="text-[11px] text-white/80">
-                {userProfile ? `+91 ${userProfile.phone} · ${userProfile.city}, ${userProfile.state}` : 'Profile & Order Tracking'}
+                {userProfile
+                  ? `+91 ${userProfile.phone}${userProfile.city ? ` · ${userProfile.city}, ${userProfile.state}` : ''}`
+                  : 'Profile & Order Tracking'}
               </p>
             </div>
           </div>
@@ -404,26 +406,41 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                         <div className="font-bold text-[#222222] font-mono mt-0.5">+91 {userProfile.phone}</div>
                       </div>
                       <div className="bg-white p-2.5 rounded-lg border border-[#EFEAE2]">
-                        <div className="text-[10px] text-[#888888] font-semibold">Age</div>
-                        <div className="font-bold text-[#222222] mt-0.5">{userProfile.age} Years</div>
-                      </div>
-                      <div className="bg-white p-2.5 rounded-lg border border-[#EFEAE2]">
                         <div className="text-[10px] text-[#888888] font-semibold">Pincode</div>
-                        <div className="font-bold text-[#222222] font-mono mt-0.5">{userProfile.pincode}</div>
-                      </div>
-                      <div className="sm:col-span-2 bg-white p-2.5 rounded-lg border border-[#EFEAE2]">
-                        <div className="text-[10px] text-[#888888] font-semibold">Village / Building Name</div>
-                        <div className="font-bold text-[#222222] mt-0.5">{userProfile.buildingOrVillage}</div>
-                      </div>
-                      <div className="sm:col-span-2 bg-white p-2.5 rounded-lg border border-[#EFEAE2]">
-                        <div className="text-[10px] text-[#888888] font-semibold">Full Address</div>
-                        <div className="font-medium text-[#222222] mt-0.5">
-                          {userProfile.fullAddress}
-                          {userProfile.landmark ? `, Near ${userProfile.landmark}` : ''}
+                        <div className="font-bold text-[#222222] font-mono mt-0.5">
+                          {userProfile.pincode || 'Not Set Yet'}
                         </div>
-                        <div className="text-[11px] text-[#555555] mt-1 font-semibold">
-                          {userProfile.city}, {userProfile.state} - {userProfile.pincode}
+                      </div>
+                      {userProfile.age ? (
+                        <div className="bg-white p-2.5 rounded-lg border border-[#EFEAE2]">
+                          <div className="text-[10px] text-[#888888] font-semibold">Age</div>
+                          <div className="font-bold text-[#222222] mt-0.5">{userProfile.age} Years</div>
                         </div>
+                      ) : null}
+                      {userProfile.buildingOrVillage ? (
+                        <div className="sm:col-span-2 bg-white p-2.5 rounded-lg border border-[#EFEAE2]">
+                          <div className="text-[10px] text-[#888888] font-semibold">Village / Building Name</div>
+                          <div className="font-bold text-[#222222] mt-0.5">{userProfile.buildingOrVillage}</div>
+                        </div>
+                      ) : null}
+                      <div className="sm:col-span-2 bg-white p-2.5 rounded-lg border border-[#EFEAE2]">
+                        <div className="text-[10px] text-[#888888] font-semibold">Saved Delivery Address</div>
+                        {userProfile.fullAddress || userProfile.city ? (
+                          <>
+                            <div className="font-medium text-[#222222] mt-0.5">
+                              {userProfile.fullAddress}
+                              {userProfile.landmark ? `, Near ${userProfile.landmark}` : ''}
+                            </div>
+                            <div className="text-[11px] text-[#555555] mt-1 font-semibold">
+                              {[userProfile.city, userProfile.state].filter(Boolean).join(', ')}
+                              {userProfile.pincode ? ` - ${userProfile.pincode}` : ''}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-[11px] text-[#777777] italic mt-0.5">
+                            Abhi koi delivery address save nahi hai — order karte waqt jo address daalenge wo automatically yahan save ho jayega.
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -596,7 +613,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       <div>
                         <label className="flex items-center gap-1 font-bold mb-1">
                           <Calendar className="w-3 h-3 text-[#9F2089]" />
-                          <span>Age *</span>
+                          <span>Age (Optional)</span>
                         </label>
                         <input
                           type="number"
@@ -645,7 +662,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       <div className="sm:col-span-2">
                         <label className="flex items-center gap-1 font-bold mb-1">
                           <Building2 className="w-3 h-3 text-[#9F2089]" />
-                          <span>Village / Building Name *</span>
+                          <span>Village / Building Name (Optional)</span>
                         </label>
                         <input
                           type="text"
@@ -659,7 +676,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       <div className="sm:col-span-2">
                         <label className="flex items-center gap-1 font-bold mb-1">
                           <Home className="w-3 h-3 text-[#9F2089]" />
-                          <span>Full Address *</span>
+                          <span>Full Delivery Address</span>
                         </label>
                         <textarea
                           rows={2}
@@ -671,7 +688,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       </div>
 
                       <div>
-                        <label className="block font-bold mb-1">City *</label>
+                        <label className="block font-bold mb-1">City</label>
                         <input
                           type="text"
                           value={formData.city}
@@ -682,7 +699,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       </div>
 
                       <div>
-                        <label className="block font-bold mb-1">State *</label>
+                        <label className="block font-bold mb-1">State</label>
                         <input
                           type="text"
                           value={formData.state}
@@ -695,7 +712,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       <div>
                         <label className="flex items-center gap-1 font-bold mb-1">
                           <MapPin className="w-3 h-3 text-[#9F2089]" />
-                          <span>Pincode *</span>
+                          <span>Pincode</span>
                         </label>
                         <input
                           type="text"

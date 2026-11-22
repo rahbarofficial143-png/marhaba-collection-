@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, ShieldCheck, CheckCircle2, Truck, Banknote, 
   Copy, Check, ArrowRight, UserCheck, Landmark, QrCode, ZoomIn, PhoneCall, Video,
-  Camera, Image as ImageIcon, Send, Share2, Loader2
+  Camera, Image as ImageIcon, Send, Share2, Loader2, Edit3, MapPin
 } from 'lucide-react';
 import { CartItem, Order, UserProfile, PaymentAccount } from '../types';
 
@@ -69,6 +69,16 @@ interface CheckoutModalProps {
   activePaymentAccount?: PaymentAccount | null;
 }
 
+function profileHasSavedAddress(profile: UserProfile | null): boolean {
+  if (!profile) return false;
+  return Boolean(
+    profile.pincode?.trim() &&
+    profile.city?.trim() &&
+    profile.state?.trim() &&
+    (profile.fullAddress?.trim() || profile.buildingOrVillage?.trim())
+  );
+}
+
 function buildAddressFromProfile(profile: UserProfile | null) {
   if (!profile) {
     return {
@@ -109,8 +119,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [step, setStep] = useState<'form' | 'confirmed'>('form');
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
 
-  // Address State (auto-filled from saved UserProfile, freely editable)
+  // Address State (auto-filled from saved UserProfile, with Saved Address card + Change Address option)
   const [formData, setFormData] = useState(() => buildAddressFromProfile(userProfile));
+  const [isEditingAddress, setIsEditingAddress] = useState<boolean>(
+    () => !profileHasSavedAddress(userProfile)
+  );
 
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upi' | 'card'>('upi');
   const [showScreenshotOptions, setShowScreenshotOptions] = useState(false);
@@ -134,9 +147,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const directWhatsappLinkRef = useRef<HTMLAnchorElement | null>(null);
   const waitingWhatsappReturnRef = useRef(false);
   const whatsappReturnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevOpenRef = useRef(false);
 
   useEffect(() => {
-    if (isOpen) {
+    const justOpened = isOpen && !prevOpenRef.current;
+    prevOpenRef.current = isOpen;
+    if (justOpened) {
       setStep('form');
       setPlacedOrder(null);
       setShowScreenshotOptions(false);
@@ -155,6 +171,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       setErrors({});
       setQrZoomed(false);
       setFormData(buildAddressFromProfile(userProfile));
+      setIsEditingAddress(!profileHasSavedAddress(userProfile));
     }
   }, [isOpen, userProfile]);
 
@@ -234,6 +251,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       newErrors.screenshot = 'Proof ke liye WhatsApp icon par click karke payment screenshot bhejein.';
     }
 
+    if (
+      newErrors.fullName ||
+      newErrors.phone ||
+      newErrors.pincode ||
+      newErrors.addressLine ||
+      newErrors.city ||
+      newErrors.state
+    ) {
+      setIsEditingAddress(true);
+    }
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0 && newErrors.screenshot && Object.keys(newErrors).length === 1) {
       screenshotSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -508,98 +535,176 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
               {/* Left Column: Delivery Address & Payment Method */}
               <div className="md:col-span-7 space-y-5">
-                {/* 1. Delivery Address */}
+                {/* 1. Delivery Address (Auto-saved from first order & persisted in Supabase, with Change Address button) */}
                 <div>
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                     <h3 className="text-xs font-bold text-[#222222] uppercase tracking-wider flex items-center gap-1.5">
                       <Truck className="w-4 h-4 text-[#9F2089]" />
                       <span>1. Delivery Address</span>
                     </h3>
-                    {userProfile && (
-                      <button
-                        type="button"
-                        onClick={() => setFormData(buildAddressFromProfile(userProfile))}
-                        className="text-[11px] font-bold text-[#9F2089] hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        <span>Use Saved Profile</span>
-                      </button>
+                    {profileHasSavedAddress(userProfile) && isEditingAddress && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData(buildAddressFromProfile(userProfile));
+                            setIsEditingAddress(false);
+                            setErrors((prev) => {
+                              const next = { ...prev };
+                              delete next.fullName;
+                              delete next.phone;
+                              delete next.pincode;
+                              delete next.addressLine;
+                              delete next.city;
+                              delete next.state;
+                              return next;
+                            });
+                          }}
+                          className="text-[11px] font-bold text-[#9F2089] hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Reset to Saved Address</span>
+                        </button>
+                      </div>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="sm:col-span-2">
-                      <label className="block text-[#555555] font-medium mb-1">Full Name *</label>
-                      <input
-                        type="text"
-                        value={formData.fullName}
-                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
-                        placeholder="Recipient full name"
-                      />
-                      {errors.fullName && <p className="text-[11px] text-red-600 mt-0.5">{errors.fullName}</p>}
-                    </div>
+                  {profileHasSavedAddress(userProfile) && !isEditingAddress ? (
+                    <div className="p-3.5 bg-[#FAF8F5] border-2 border-[#9F2089]/35 rounded-lg space-y-2 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1 min-w-0">
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>Saved Delivery Address (Auto-Selected)</span>
+                          </div>
+                          <div className="font-bold text-sm text-[#222222] pt-0.5">
+                            {formData.fullName}{' '}
+                            <span className="font-mono text-xs font-semibold text-[#555555]">
+                              ({formData.phone})
+                            </span>
+                          </div>
+                          <div className="text-[#444444] leading-relaxed flex items-start gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-[#9F2089] shrink-0 mt-0.5" />
+                            <span>
+                              {formData.addressLine}, {formData.city}, {formData.state} -{' '}
+                              <strong className="font-mono">{formData.pincode}</strong>
+                            </span>
+                          </div>
+                        </div>
 
-                    <div>
-                      <label className="block text-[#555555] font-medium mb-1">10-Digit Mobile Phone *</label>
-                      <input
-                        type="tel"
-                        maxLength={10}
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
-                        placeholder="9876543210"
-                      />
-                      {errors.phone && <p className="text-[11px] text-red-600 mt-0.5">{errors.phone}</p>}
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingAddress(true)}
+                          className="px-3 py-1.5 bg-white hover:bg-[#FDE5F4] border border-[#9F2089]/40 text-[#9F2089] font-bold text-[11px] rounded-md flex items-center gap-1 shrink-0 transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Change Address</span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-[#666666] pt-1 border-t border-[#EAE5DC]">
+                        Har order par aapka yahi saved address auto-fill rehta hai. Naya address daalne ke liye <strong>Change Address</strong> par click karein (order karte hi naya address bhi save ho jayega).
+                      </p>
                     </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {!profileHasSavedAddress(userProfile) ? (
+                        <div className="p-2.5 bg-[#FDE5F4]/35 border border-[#9F2089]/25 rounded-lg text-[11px] text-[#4B0013] flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-[#9F2089] shrink-0" />
+                          <span>
+                            Pehli baar apna delivery address enter karein — ye aapke profile &amp; Supabase me save ho jayega aur agli baar automatically fill rahega.
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 flex items-center justify-between gap-2">
+                          <span>Aap naya delivery address edit kar rahe hain — order place hote hi ye save ho jayega.</span>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingAddress(false)}
+                            className="px-2 py-1 bg-white border border-amber-300 rounded font-bold text-[10px] shrink-0 cursor-pointer"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      )}
 
-                    <div>
-                      <label className="block text-[#555555] font-medium mb-1">Pincode *</label>
-                      <input
-                        type="text"
-                        maxLength={6}
-                        value={formData.pincode}
-                        onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
-                        placeholder="110001"
-                      />
-                      {errors.pincode && <p className="text-[11px] text-red-600 mt-0.5">{errors.pincode}</p>}
-                    </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div className="sm:col-span-2">
+                          <label className="block text-[#555555] font-medium mb-1">Full Name *</label>
+                          <input
+                            type="text"
+                            value={formData.fullName}
+                            onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                            className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                            placeholder="Recipient full name"
+                          />
+                          {errors.fullName && <p className="text-[11px] text-red-600 mt-0.5">{errors.fullName}</p>}
+                        </div>
 
-                    <div className="sm:col-span-2">
-                      <label className="block text-[#555555] font-medium mb-1">Flat / House No / Street Address *</label>
-                      <input
-                        type="text"
-                        value={formData.addressLine}
-                        onChange={(e) => setFormData({ ...formData, addressLine: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
-                        placeholder="Flat 402, Royal Palms, Connaught Place"
-                      />
-                      {errors.addressLine && <p className="text-[11px] text-red-600 mt-0.5">{errors.addressLine}</p>}
-                    </div>
+                        <div>
+                          <label className="block text-[#555555] font-medium mb-1">10-Digit Mobile Phone *</label>
+                          <input
+                            type="tel"
+                            maxLength={10}
+                            value={formData.phone}
+                            onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
+                            className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none font-mono"
+                            placeholder="10-digit mobile number"
+                          />
+                          {errors.phone && <p className="text-[11px] text-red-600 mt-0.5">{errors.phone}</p>}
+                        </div>
 
-                    <div>
-                      <label className="block text-[#555555] font-medium mb-1">City *</label>
-                      <input
-                        type="text"
-                        value={formData.city}
-                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
-                      />
-                      {errors.city && <p className="text-[11px] text-red-600 mt-0.5">{errors.city}</p>}
-                    </div>
+                        <div>
+                          <label className="block text-[#555555] font-medium mb-1">Pincode *</label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={formData.pincode}
+                            onChange={(e) => setFormData({ ...formData, pincode: e.target.value.replace(/\D/g, '') })}
+                            className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none font-mono"
+                            placeholder="e.g. 855108"
+                          />
+                          {errors.pincode && <p className="text-[11px] text-red-600 mt-0.5">{errors.pincode}</p>}
+                        </div>
 
-                    <div>
-                      <label className="block text-[#555555] font-medium mb-1">State *</label>
-                      <input
-                        type="text"
-                        value={formData.state}
-                        onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
-                      />
-                      {errors.state && <p className="text-[11px] text-red-600 mt-0.5">{errors.state}</p>}
+                        <div className="sm:col-span-2">
+                          <label className="block text-[#555555] font-medium mb-1">Flat / House No / Village / Street Address *</label>
+                          <input
+                            type="text"
+                            value={formData.addressLine}
+                            onChange={(e) => setFormData({ ...formData, addressLine: e.target.value })}
+                            className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                            placeholder="House No, Mohalla / Village, Road, Landmark"
+                          />
+                          {errors.addressLine && <p className="text-[11px] text-red-600 mt-0.5">{errors.addressLine}</p>}
+                        </div>
+
+                        <div>
+                          <label className="block text-[#555555] font-medium mb-1">City / Town *</label>
+                          <input
+                            type="text"
+                            value={formData.city}
+                            onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                            className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                            placeholder="e.g. Kishanganj"
+                          />
+                          {errors.city && <p className="text-[11px] text-red-600 mt-0.5">{errors.city}</p>}
+                        </div>
+
+                        <div>
+                          <label className="block text-[#555555] font-medium mb-1">State *</label>
+                          <input
+                            type="text"
+                            value={formData.state}
+                            onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                            className="w-full px-3 py-2 border border-[#CCCCCC] rounded focus:border-[#9F2089] focus:outline-none"
+                            placeholder="e.g. Bihar"
+                          />
+                          {errors.state && <p className="text-[11px] text-red-600 mt-0.5">{errors.state}</p>}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* 2. Payment Method (Featuring PhonePe / UPI to 9334808340) */}
