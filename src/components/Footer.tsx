@@ -11,10 +11,9 @@ interface FooterProps {
 export const Footer: React.FC<FooterProps> = ({
   onSelectCategory,
   onOpenArtisans,
-  onOpenTracking,
-  paymentPhone
+  onOpenTracking
 }) => {
-  const activePhone = (paymentPhone || '').trim() || '9334808340';
+  const activePhone = '9334808340';
   return (
     <footer className="bg-white border-t border-[#E8E8E8] text-[#222222] mt-10">
       {/* Main Footer Links */}

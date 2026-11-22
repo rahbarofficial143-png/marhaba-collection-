@@ -37,10 +37,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenArtisans,
   onOpenTracking,
   onOpenProfile,
-  userName,
-  paymentPhone
+  userName
 }) => {
-  const activePhone = (paymentPhone || '').trim() || '9334808340';
+  const activePhone = '9334808340';
   const [showAppPrompt, setShowAppPrompt] = useState(false);
   const [installFeedback, setInstallFeedback] = useState<string | null>(null);
   const clickCountRef = useRef(0);
