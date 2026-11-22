@@ -560,11 +560,9 @@ export default function App() {
     });
 
     const cfg = getSupabaseConfig();
-    if (cfg.url && cfg.anonKey) {
-      saveUserToSupabase(enrichedProfile, cfg).catch((err) =>
-        console.warn('Could not sync user account to Supabase store_users', err)
-      );
-    }
+    saveUserToSupabase(enrichedProfile, cfg).catch((err) =>
+      console.warn('Could not sync user account to Supabase store_users', err)
+    );
 
     setIsCreateAccountOpen(false);
   };
@@ -1587,6 +1585,7 @@ export default function App() {
       {/* Admin Login Modal */}
       <AdminLoginModal
         isOpen={isAdminLoginOpen}
+        localUsers={storeUsers}
         onClose={() => setIsAdminLoginOpen(false)}
         onLoginSuccess={(restoredAdminProfile) => {
           try {

@@ -217,7 +217,16 @@ async function startServer() {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     const cfg = getEffectiveConfig();
     if (!cfg) {
-      res.json({ configured: false, categories: null, products: null, banners: null, reviews: null, users: null, paymentSettings: null });
+      const localUsersOnly = readLocalStoreUsersRaw();
+      res.json({
+        configured: false,
+        categories: null,
+        products: null,
+        banners: null,
+        reviews: null,
+        users: localUsersOnly.length > 0 ? localUsersOnly : null,
+        paymentSettings: null
+      });
       return;
     }
 
@@ -230,13 +239,30 @@ async function startServer() {
       fetchTableFromSupabase(cfg, 'payment_settings', 'created_at.asc')
     ]);
 
+    const localUsersRaw = readLocalStoreUsersRaw();
+    let mergedUsers = users;
+    if (localUsersRaw.length > 0) {
+      const byId = new Map<string, any>();
+      if (Array.isArray(users)) {
+        for (const u of users) {
+          if (u?.id) byId.set(u.id, u);
+        }
+      }
+      for (const lu of localUsersRaw) {
+        if (lu?.id && !byId.has(lu.id)) {
+          byId.set(lu.id, lu);
+        }
+      }
+      mergedUsers = Array.from(byId.values());
+    }
+
     res.json({
       configured: true,
       categories,
       products,
       banners,
       reviews,
-      users,
+      users: mergedUsers,
       paymentSettings
     });
   });
@@ -244,6 +270,8 @@ async function startServer() {
   // ---------------------------------------------------------------------------
   // 6-DIGIT SECRET CODE AUTH & ADMIN ACCOUNT PERSISTENCE (.data + Supabase)
   // ---------------------------------------------------------------------------
+  const STORE_USERS_FILE = path.join(DATA_DIR, 'store-users.json');
+
   interface StoredAdminProfile {
     id: string;
     role: 'admin';
@@ -345,15 +373,63 @@ async function startServer() {
     };
   }
 
-  function encodePackedUser(u: StoredAdminProfile): string {
+  function encodePackedUser(u: {
+    buildingOrVillage?: string;
+    fullAddress?: string;
+    landmark?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    secretCode?: string;
+    role?: string;
+    id?: string;
+  }): string {
     const pin = escapePipeVal((u.pincode || '').trim());
     const code = String(u.secretCode || '').replace(/\D/g, '').slice(0, 6);
-    return `u1|${serverTokenize(u.buildingOrVillage)}|${serverTokenize(u.fullAddress)}|${serverTokenize(u.landmark || '')}|${serverTokenize(u.city)}|${serverTokenize(u.state)}|${pin}|${code}|admin`;
+    const roleTag = u.role === 'admin' || u.id === ADMIN_OWNER_ID ? 'admin' : '';
+    const base = `u1|${serverTokenize(u.buildingOrVillage || '')}|${serverTokenize(u.fullAddress || '')}|${serverTokenize(u.landmark || '')}|${serverTokenize(u.city || '')}|${serverTokenize(u.state || '')}|${pin}`;
+    return roleTag ? `${base}|${code}|${roleTag}` : code ? `${base}|${code}` : base;
+  }
+
+  function readLocalStoreUsersRaw(): any[] {
+    try {
+      if (fs.existsSync(STORE_USERS_FILE)) {
+        const parsed = JSON.parse(fs.readFileSync(STORE_USERS_FILE, 'utf-8'));
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return [];
+  }
+
+  function writeLocalStoreUsersRaw(rows: any[]): void {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+      fs.writeFileSync(STORE_USERS_FILE, JSON.stringify(rows, null, 2), 'utf-8');
+    } catch (err) {
+      console.warn('Could not persist local store_users cache:', err);
+    }
+  }
+
+  function upsertLocalStoreUserRow(row: any): void {
+    if (!row || !row.id) return;
+    const rows = readLocalStoreUsersRaw();
+    const idx = rows.findIndex((r) => r.id === row.id);
+    if (idx >= 0) {
+      rows[idx] = { ...rows[idx], ...row };
+    } else {
+      rows.unshift(row);
+    }
+    writeLocalStoreUsersRaw(rows);
   }
 
   function getDefaultAdminProfile(): StoredAdminProfile {
     const now = new Date().toISOString();
-    const defaultSecret = String(process.env.ADMIN_DEFAULT_SECRET || '786786').replace(/\D/g, '').slice(0, 6) || '786786';
+    const envCode = String(process.env.ADMIN_DEFAULT_SECRET || '').replace(/\D/g, '').slice(0, 6);
+    const defaultSecret = /^\d{6}$/.test(envCode) ? envCode : '786786';
     return {
       id: ADMIN_OWNER_ID,
       role: 'admin',
@@ -505,6 +581,46 @@ async function startServer() {
     return local;
   }
 
+  app.post('/api/store-users', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const body = req.body || {};
+    const phone = String(body.phone || '').replace(/\D/g, '').slice(0, 15);
+    const fullName = String(body.fullName || '').trim();
+    const cleanCode = String(body.secretCode || '').replace(/\D/g, '').slice(0, 6);
+    if (!fullName || !phone || !/^\d{6}$/.test(cleanCode)) {
+      res.status(400).json({ ok: false, error: 'Valid name, phone, and 6-digit secretCode required.' });
+      return;
+    }
+    const role = body.role === 'admin' || body.id === ADMIN_OWNER_ID ? 'admin' : 'user';
+    const id =
+      role === 'admin'
+        ? ADMIN_OWNER_ID
+        : String(body.id || '').trim() || `u_${Number(phone).toString(36)}`;
+    const now = new Date().toISOString();
+    const row = {
+      id,
+      phone,
+      full_name: fullName,
+      age: String(body.age || '').trim(),
+      secret_code: cleanCode,
+      packed_data: encodePackedUser({
+        id,
+        role,
+        buildingOrVillage: body.buildingOrVillage,
+        fullAddress: body.fullAddress,
+        landmark: body.landmark,
+        city: body.city,
+        state: body.state,
+        pincode: body.pincode,
+        secretCode: cleanCode
+      }),
+      created_at: body.createdAt || now,
+      updated_at: body.updatedAt || now
+    };
+    upsertLocalStoreUserRow(row);
+    res.json({ ok: true, id });
+  });
+
   app.post('/api/admin-login', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const cleanUser = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
@@ -538,6 +654,20 @@ async function startServer() {
     if (adminProfile.secretCode === cleanCode) {
       res.json({ ok: true, role: 'admin', profile: adminProfile });
       return;
+    }
+
+    // Check server local .data/store-users.json cache first
+    const localRows = readLocalStoreUsersRaw();
+    for (const row of localRows) {
+      const mapped = mapSupabaseRowToUser(row);
+      if (mapped.secretCode === cleanCode) {
+        res.json({
+          ok: true,
+          role: mapped.id === ADMIN_OWNER_ID || mapped.role === 'admin' ? 'admin' : 'user',
+          profile: mapped
+        });
+        return;
+      }
     }
 
     const cfg = getEffectiveConfig();
@@ -580,6 +710,17 @@ async function startServer() {
 
     const adminProfile = await loadLatestAdminProfile();
     if (adminProfile.secretCode === cleanCode && excludeId !== ADMIN_OWNER_ID) {
+      res.json({ available: false });
+      return;
+    }
+
+    const localRows = readLocalStoreUsersRaw();
+    if (
+      localRows.some((row) => {
+        if (excludeId && row.id === excludeId) return false;
+        return mapSupabaseRowToUser(row).secretCode === cleanCode;
+      })
+    ) {
       res.json({ available: false });
       return;
     }

@@ -2,15 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { X, Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, Sparkles, KeyRound, Loader2 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { normalizeSecretCode, isValidSecretCode } from '../lib/userCodec';
+import { getSupabaseConfig, loginWithAdminCredentials, loginWithSecretCode } from '../lib/supabase';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
+  localUsers?: UserProfile[];
   onClose: () => void;
   onLoginSuccess: (adminProfile?: UserProfile) => void;
 }
 
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isOpen,
+  localUsers = [],
   onClose,
   onLoginSuccess
 }) => {
@@ -54,23 +57,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      const res = await fetch('/api/admin-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-        body: JSON.stringify({
-          username: username.trim(),
-          password: password.trim()
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data?.ok) {
-        completeLogin(data.profile);
+      const cfg = getSupabaseConfig();
+      const result = await loginWithAdminCredentials(username, password, cfg);
+      if (result.ok) {
+        completeLogin(result.profile);
         return;
       }
-      setError(data?.error || 'Galat Username ya Password! Kripya sahi owner credentials enter karein.');
-    } catch {
-      setError('Server connection error. Please try again.');
+      setError(result.error || 'Galat Username ya Password! Kripya sahi owner credentials enter karein.');
     } finally {
       setIsSubmitting(false);
     }
@@ -87,24 +80,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/secret-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-        body: JSON.stringify({ secretCode: clean })
-      });
-      const data = await res.json();
-      if (res.ok && data?.ok && data?.role === 'admin') {
-        completeLogin(data.profile);
+      const cfg = getSupabaseConfig();
+      const result = await loginWithSecretCode(clean, localUsers, cfg);
+      if (result.ok && result.role === 'admin') {
+        completeLogin(result.profile);
         return;
       }
-      if (res.ok && data?.role === 'user') {
+      if (result.ok && result.role === 'user') {
         setError('Ye 6-digit code customer account ka hai. Kripya Admin 6-digit Secret Code daalein.');
       } else {
-        setError(data?.error || 'Galat Admin 6-digit Secret Code!');
+        setError(result.error || 'Galat Admin 6-digit Secret Code!');
       }
-    } catch {
-      setError('Server connection error. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
