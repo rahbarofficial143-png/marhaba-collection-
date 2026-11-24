@@ -125,7 +125,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     () => !profileHasSavedAddress(userProfile)
   );
 
-  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upi' | 'card'>('upi');
+  const paymentMethod = 'upi' as const;
   const [showScreenshotOptions, setShowScreenshotOptions] = useState(false);
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [compressedShareFile, setCompressedShareFile] = useState<File | null>(null);
@@ -247,7 +247,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     if (!formData.city.trim()) newErrors.city = 'City required';
     if (!formData.state.trim()) newErrors.state = 'State required';
 
-    if (paymentMethod === 'upi' && !screenshotSent) {
+    if (!screenshotSent) {
       newErrors.screenshot = 'Proof ke liye WhatsApp icon par click karke payment screenshot bhejein.';
     }
 
@@ -487,16 +487,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       status: 'confirmed',
       trackingNumber: trackingNum,
       estimatedDeliveryDate: formattedDelivery,
-      utrNumber:
-        paymentMethod === 'upi'
-          ? proofId
-            ? `WA-PROOF:${proofId}`
-            : 'WHATSAPP-SCREENSHOT-PROOF'
-          : undefined,
+      utrNumber: proofId ? `WA-PROOF:${proofId}` : 'WHATSAPP-SCREENSHOT-PROOF',
       paymentPhone: merchantPhone,
-      paymentProofUrl: paymentMethod === 'upi' ? proofPageUrl || undefined : undefined,
-      paymentScreenshot:
-        paymentMethod === 'upi' ? proofImageUrl || screenshotDataUrl || undefined : undefined
+      paymentProofUrl: proofPageUrl || undefined,
+      paymentScreenshot: proofImageUrl || screenshotDataUrl || undefined
     };
 
     setPlacedOrder(newOrder);
@@ -707,37 +701,26 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   )}
                 </div>
 
-                {/* 2. Payment Method (Featuring PhonePe / UPI to 9334808340) */}
+                {/* 2. Payment Method (Online Payment Only - PhonePe / GPay / Paytm / QR) */}
                 <div>
                   <h3 className="text-xs font-bold text-[#222222] uppercase tracking-wider mb-3 flex items-center gap-1.5">
                     <Banknote className="w-4 h-4 text-[#9F2089]" />
-                    <span>2. Payment Option</span>
+                    <span>2. Online Payment</span>
                   </h3>
 
                   <div className="space-y-3 text-xs">
-                    {/* OPTION A: UPI / PhonePe (9334808340) */}
-                    <div
-                      className={`p-3.5 rounded-lg border transition-all ${
-                        paymentMethod === 'upi'
-                          ? 'border-[#9F2089] bg-[#FDE5F4]/20 ring-1 ring-[#9F2089]'
-                          : 'border-[#CCCCCC] bg-white'
-                      }`}
-                    >
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="payment"
-                          value="upi"
-                          checked={paymentMethod === 'upi'}
-                          onChange={() => setPaymentMethod('upi')}
-                          className="mt-0.5 text-[#9F2089] focus:ring-[#9F2089]"
-                        />
+                    {/* Online UPI / PhonePe / GPay / Paytm (Prepaid Only) */}
+                    <div className="p-3.5 rounded-lg border border-[#9F2089] bg-[#FDE5F4]/20 ring-1 ring-[#9F2089] transition-all">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 w-4 h-4 rounded-full border-2 border-[#9F2089] flex items-center justify-center shrink-0">
+                          <div className="w-2 h-2 rounded-full bg-[#9F2089]" />
+                        </div>
                         <div className="flex-1">
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-2">
                             <span className="font-bold text-sm text-[#222222]">
                               UPI / PhonePe / GPay / Paytm
                             </span>
-                            <span className="text-[10px] bg-[#9F2089] text-white font-bold px-2 py-0.5 rounded">
+                            <span className="text-[10px] bg-[#9F2089] text-white font-bold px-2 py-0.5 rounded shrink-0">
                               Instant App Pay
                             </span>
                           </div>
@@ -746,11 +729,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                             Pay directly via PhonePe, GPay, Paytm, Airtel Bank ya FamPay to phone number:
                           </div>
                         </div>
-                      </label>
+                      </div>
 
                       {/* Expanded UPI App Launcher, Admin QR Scanner & Bank Details */}
-                      {paymentMethod === 'upi' && (
-                        <div className="mt-3 pt-3 border-t border-[#E8E8E8] space-y-3">
+                      <div className="mt-3 pt-3 border-t border-[#E8E8E8] space-y-3">
                           {/* Admin Bank Name, Account Holder, Phone Number & Copy */}
                           <div className="p-3 bg-white rounded-lg border border-[#E8E8E8] space-y-2 shadow-2xs">
                             <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#F0F0F2]">
@@ -1066,40 +1048,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                             )}
                           </div>
                         </div>
-                      )}
-                    </div>
-
-                    {/* OPTION B: Cash on Delivery */}
-                    <div
-                      className={`p-3.5 rounded-lg border transition-all ${
-                        paymentMethod === 'cod'
-                          ? 'border-[#9F2089] bg-[#FDE5F4]/20 ring-1 ring-[#9F2089]'
-                          : 'border-[#CCCCCC] bg-white'
-                      }`}
-                    >
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="payment"
-                          value="cod"
-                          checked={paymentMethod === 'cod'}
-                          onChange={() => setPaymentMethod('cod')}
-                          className="mt-0.5 text-[#9F2089] focus:ring-[#9F2089]"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-sm text-[#222222]">
-                              Cash on Delivery (COD)
-                            </span>
-                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
-                              Verified
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-[#555555] mt-0.5">
-                            Pay cash at your doorstep after inspecting the master-weaver packaging.
-                          </p>
-                        </div>
-                      </label>
                     </div>
                   </div>
                 </div>
@@ -1199,7 +1147,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </div>
 
                 <div className="space-y-2 pt-2">
-                  {paymentMethod === 'upi' && screenshotSent && (
+                  {screenshotSent && (
                     <div className="p-2 rounded bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       <span>Screenshot send ho gaya hai — ab aap Submit kar sakte hain!</span>

@@ -380,7 +380,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 <div className="text-xs text-[#666666] mt-1.5 flex items-center gap-3">
                   <span className="text-[#038D63] font-bold">Free Delivery</span>
                   <span>·</span>
-                  <span>Cash on Delivery Available</span>
+                  <span>Online Payment Available</span>
                   <span>·</span>
                   <span>7-Day Return Policy</span>
                 </div>
@@ -464,7 +464,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <div className="border border-[#E8E8E8] rounded-lg p-3 bg-white space-y-2">
                 <div className="text-xs font-bold text-[#222222] flex items-center gap-1.5">
                   <Truck className="w-4 h-4 text-[#9F2089]" />
-                  <span>Check Delivery Date & Cash on Delivery</span>
+                  <span>Check Estimated Delivery Date</span>
                 </div>
 
                 <form onSubmit={handlePincodeCheck} className="flex gap-2">
@@ -491,7 +491,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   <div className="text-[11px] text-[#038D63] font-medium flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5 shrink-0" />
                     <span>
-                      Free Delivery by <strong>Tomorrow / Day After</strong> · COD Available!
+                      Free Delivery by <strong>Tomorrow / Day After</strong> · Online Payment Ready!
                     </span>
                   </div>
                 )}

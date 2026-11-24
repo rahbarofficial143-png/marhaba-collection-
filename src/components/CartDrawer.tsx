@@ -300,7 +300,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
             <div className="flex items-center justify-center gap-2 text-[10px] text-[#887173]">
               <ShieldCheck className="w-3.5 h-3.5 text-[#C59B27]" />
-              <span>Silk Mark Certified · 100% Cash on Delivery & Free Returns</span>
+              <span>Silk Mark Certified · 100% Secure Online Payment &amp; Free Returns</span>
             </div>
           </div>
         )}

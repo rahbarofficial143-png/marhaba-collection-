@@ -156,7 +156,7 @@ export const Footer: React.FC<FooterProps> = ({
               </button>
             </li>
             <li>
-              <span className="hover:text-[#9F2089] cursor-pointer">Cash on Delivery Terms</span>
+              <span className="hover:text-[#9F2089] cursor-pointer">Secure Payment Terms</span>
             </li>
             <li>
               <span className="hover:text-[#9F2089] cursor-pointer">Silk Mark Purity Guide</span>
