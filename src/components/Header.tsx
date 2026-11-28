@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Search, Heart, ShoppingBag, Smartphone, Store, User, X, Sparkles, Download, CheckCircle2, Share, MoreVertical, RefreshCw } from 'lucide-react';
+import { Search, Heart, ShoppingBag, User, X, Sparkles, Download, CheckCircle2, Share, MoreVertical, RefreshCw } from 'lucide-react';
 import { Category } from '../types';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
@@ -15,7 +15,6 @@ interface HeaderProps {
   onOpenCart: () => void;
   onOpenWishlist: () => void;
   onTriggerAdminLogin: () => void;
-  onOpenArtisans: () => void;
   onOpenTracking: () => void;
   onOpenProfile: () => void;
   userName?: string;
@@ -34,7 +33,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCart,
   onOpenWishlist,
   onTriggerAdminLogin,
-  onOpenArtisans,
   onOpenTracking,
   onOpenProfile,
   userName
@@ -88,23 +86,17 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="flex items-center gap-5">
             {!isInstalled && (
-              <button
-                onClick={handleMobileAppClick}
-                className="text-[#9F2089] hover:text-[#4B0013] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Mobile App</span>
-              </button>
+              <>
+                <button
+                  onClick={handleMobileAppClick}
+                  className="text-[#9F2089] hover:text-[#4B0013] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Mobile App</span>
+                </button>
+                <span className="text-[#DDDDDD]">|</span>
+              </>
             )}
-            <span className="text-[#DDDDDD]">|</span>
-            <button
-              onClick={onOpenArtisans}
-              className="hover:text-[#9F2089] flex items-center gap-1 transition-colors"
-            >
-              <Store className="w-3.5 h-3.5" />
-              <span>Master Weavers Guild</span>
-            </button>
-            <span className="text-[#DDDDDD]">|</span>
             <button
               onClick={onOpenTracking}
               className="hover:text-[#9F2089] transition-colors"

@@ -6,14 +6,12 @@ interface HeroSectionProps {
   banners: Banner[];
   categories: Category[];
   onExploreCategory: (category: string) => void;
-  onOpenArtisans: () => void;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({
   banners,
   categories,
-  onExploreCategory,
-  onOpenArtisans
+  onExploreCategory
 }) => {
   const activeBanners = banners.filter((b) => b.active);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -143,13 +141,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     className="px-4 py-2 sm:px-5 sm:py-2.5 bg-white text-[#9F2089] hover:bg-[#FAF8F5] text-xs sm:text-sm font-bold rounded shadow-md transition-all active:scale-98 cursor-pointer"
                   >
                     {current.ctaText} →
-                  </button>
-
-                  <button
-                    onClick={onOpenArtisans}
-                    className="px-3.5 py-2 bg-black/20 hover:bg-black/30 text-white text-xs font-semibold rounded border border-white/30 transition-colors cursor-pointer"
-                  >
-                    Meet Direct Weavers
                   </button>
                 </div>
               </div>

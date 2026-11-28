@@ -3,14 +3,12 @@ import { Mail, Phone, MapPin } from 'lucide-react';
 
 interface FooterProps {
   onSelectCategory: (catId: string) => void;
-  onOpenArtisans: () => void;
   onOpenTracking: () => void;
   paymentPhone?: string;
 }
 
 export const Footer: React.FC<FooterProps> = ({
   onSelectCategory,
-  onOpenArtisans,
   onOpenTracking
 }) => {
   const activePhone = '9334808340';
@@ -19,7 +17,7 @@ export const Footer: React.FC<FooterProps> = ({
       {/* Main Footer Links */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 md:grid-cols-12 gap-8">
         {/* Brand Column */}
-        <div className="md:col-span-4 space-y-3">
+        <div className="md:col-span-5 space-y-3">
           <div className="flex items-center gap-2.5">
             <img
               src="/rs-icon-192.png"
@@ -62,7 +60,7 @@ export const Footer: React.FC<FooterProps> = ({
         </div>
 
         {/* Categories */}
-        <div className="md:col-span-3 space-y-2.5">
+        <div className="md:col-span-4 space-y-2.5">
           <div className="text-xs font-bold text-[#222222] uppercase tracking-wider">
             Popular Ethnic Categories
           </div>
@@ -110,42 +108,8 @@ export const Footer: React.FC<FooterProps> = ({
           </ul>
         </div>
 
-        {/* Weaver Hubs & Verification */}
-        <div className="md:col-span-3 space-y-2.5">
-          <div className="text-xs font-bold text-[#222222] uppercase tracking-wider">
-            Direct Weaver Guilds
-          </div>
-          <ul className="text-xs text-[#666666] space-y-1.5">
-            <li>
-              <button onClick={onOpenArtisans} className="hover:text-[#9F2089] transition-colors">
-                Varanasi Weavers Guild (U.P.)
-              </button>
-            </li>
-            <li>
-              <button onClick={onOpenArtisans} className="hover:text-[#9F2089] transition-colors">
-                Surat Direct Textile Cluster (Gujarat)
-              </button>
-            </li>
-            <li>
-              <button onClick={onOpenArtisans} className="hover:text-[#9F2089] transition-colors">
-                Chanderi Heritage Guild (M.P.)
-              </button>
-            </li>
-            <li>
-              <button onClick={onOpenArtisans} className="hover:text-[#9F2089] transition-colors">
-                Kanchipuram Loom Collectives (T.N.)
-              </button>
-            </li>
-            <li>
-              <button onClick={onOpenArtisans} className="hover:text-[#9F2089] transition-colors">
-                Jaipur Royal Blockprint Guild (Rajasthan)
-              </button>
-            </li>
-          </ul>
-        </div>
-
         {/* Customer Care & Orders */}
-        <div className="md:col-span-2 space-y-2.5">
+        <div className="md:col-span-3 space-y-2.5">
           <div className="text-xs font-bold text-[#222222] uppercase tracking-wider">
             Customer Care
           </div>

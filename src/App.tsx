@@ -6,7 +6,6 @@ import { ProductCard } from './components/ProductCard';
 import { ProductDetailModal } from './components/ProductDetailModal';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
-import { ArtisanHubsModal } from './components/ArtisanHubsModal';
 import { OrderTrackingModal } from './components/OrderTrackingModal';
 import { WishlistDrawer } from './components/WishlistDrawer';
 import { Footer } from './components/Footer';
@@ -656,7 +655,6 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [isArtisansOpen, setIsArtisansOpen] = useState(false);
   const [isTrackingOpen, setIsTrackingOpen] = useState(false);
 
   // Mobile Hardware / Gesture Back Button History Stack Sync
@@ -669,7 +667,6 @@ export default function App() {
       Boolean(filters.cluster);
     if (hasFilterView) depth += 1;
     if (isAdminOpen) depth += 1;
-    if (isArtisansOpen) depth += 1;
     if (isTrackingOpen) depth += 1;
     if (isProfileOpen) depth += 1;
     if (isWishlistOpen) depth += 1;
@@ -683,7 +680,6 @@ export default function App() {
     filters.searchQuery,
     filters.cluster,
     isAdminOpen,
-    isArtisansOpen,
     isTrackingOpen,
     isProfileOpen,
     isWishlistOpen,
@@ -729,10 +725,6 @@ export default function App() {
     }
     if (isTrackingOpen) {
       setIsTrackingOpen(false);
-      return;
-    }
-    if (isArtisansOpen) {
-      setIsArtisansOpen(false);
       return;
     }
     if (activeCategory !== 'all' || filters.searchQuery.trim() || filters.cluster) {
@@ -1413,7 +1405,6 @@ export default function App() {
         onOpenCart={() => setIsCartOpen(true)}
         onOpenWishlist={() => setIsWishlistOpen(true)}
         onTriggerAdminLogin={handleTriggerAdminLogin}
-        onOpenArtisans={() => setIsArtisansOpen(true)}
         onOpenTracking={() => {
           setProfileInitialTab('orders');
           setIsProfileOpen(true);
@@ -1442,7 +1433,6 @@ export default function App() {
           banners={banners}
           categories={categories}
           onExploreCategory={handleSelectCategory}
-          onOpenArtisans={() => setIsArtisansOpen(true)}
         />
       )}
 
@@ -1549,7 +1539,6 @@ export default function App() {
       {/* Footer (RAZVI SHOP About, Gmail, Phone, Kishanganj Bihar 855108 Address) */}
       <Footer
         onSelectCategory={handleSelectCategory}
-        onOpenArtisans={() => setIsArtisansOpen(true)}
         onOpenTracking={() => {
           setProfileInitialTab('orders');
           setIsProfileOpen(true);
@@ -1598,15 +1587,6 @@ export default function App() {
         onOrderPlaced={handleOrderPlaced}
         userProfile={userProfile || (isAdminAuthenticated ? adminProfile : null)}
         activePaymentAccount={activePaymentAccount}
-      />
-
-      {/* Artisan Guilds Modal */}
-      <ArtisanHubsModal
-        isOpen={isArtisansOpen}
-        onClose={() => setIsArtisansOpen(false)}
-        onSelectCluster={(clusterId) => {
-          setFilters((prev) => ({ ...prev, cluster: clusterId }));
-        }}
       />
 
       {/* Order Tracking Modal */}
